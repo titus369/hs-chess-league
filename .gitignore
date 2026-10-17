@@ -14,8 +14,12 @@ ENV/
 instance/*
 !instance/.gitkeep
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 
 .pytest_cache/
 .coverage
