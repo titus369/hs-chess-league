@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">&larr; {{ t.name }}</a></p>
+<h1>Individual board standings</h1>
+<p>Players qualify for the lowest board they have played. All their points count.</p>
+{% for board, rows in by_board.items() %}
+<h2>Board {{ board }}</h2>
+<table border="1" cellpadding="4">
+  <tr><th>#</th><th>Player</th><th>School</th><th>Points</th><th>Games</th></tr>
+  {% for s in rows %}
+  <tr>
+    <td>{{ loop.index }}</td><td>{{ s.player.name }}</td><td>{{ s.player.school.name }}</td>
+    <td>{{ '%g'|format(s.points) }}</td><td>{{ s.games }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5">No games yet.</td></tr>
+  {% endfor %}
+</table>
+{% endfor %}
+{% endblock %}

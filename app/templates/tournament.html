@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t.name }}</h1>
+<p><a href="{{ url_for('main.boards', tournament_id=t.id) }}">Individual board standings</a></p>
+
+<h2>Team standings</h2>
+<table border="1" cellpadding="4">
+  <tr><th>#</th><th>Team</th><th>Played</th><th>MP</th><th>Tiebreak</th><th>GP</th></tr>
+  {% for r in standings %}
+  <tr>
+    <td>{{ r.rank }}</td><td>{{ r.team.name }}</td><td>{{ r.played }}</td>
+    <td>{{ r.mp }}</td><td>{{ '%g'|format(r.tb) }}</td><td>{{ '%g'|format(r.gp) }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6">No teams yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Add team</h2>
+<form method="post" action="{{ url_for('main.add_team', tournament_id=t.id) }}">
+  <label>School <input name="school" list="schools" required></label>
+  <datalist id="schools">{% for s in schools %}<option value="{{ s.name }}">{% endfor %}</datalist>
+  <button>Add team</button>
+</form>
+{% endblock %}

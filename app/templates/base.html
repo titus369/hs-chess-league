@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>HS Chess League</title></head>
+<body>
+  <p><a href="{{ url_for('main.index') }}">HS Chess League</a></p>
+  {% for message in get_flashed_messages() %}<p><b>{{ message }}</b></p>{% endfor %}
+  {% block content %}{% endblock %}
+</body>
+</html>

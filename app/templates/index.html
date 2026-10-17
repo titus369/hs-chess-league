@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Tournaments</h1>
+<p><a href="{{ url_for('main.tournament_new') }}">+ New tournament</a></p>
+<ul>
+  {% for t in tournaments %}
+  <li><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">{{ t.name }}</a>
+      ({{ t.teams|length }} teams)</li>
+  {% else %}
+  <li>No tournaments yet.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

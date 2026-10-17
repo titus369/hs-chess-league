@@ -1,17 +1,23 @@
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
 def create_app():
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
     app = Flask(__name__, instance_relative_config=True)
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///league.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["SECRET_KEY"] = "placeholder-secret-key" # TODO: change this in production
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+    if not app.config["SECRET_KEY"]:
+        raise RuntimeError("SECRET_KEY must be set in the environment or .env file")
 
-    os.makedirs(app.instance_Path, exist_ok = True)
+    os.makedirs(app.instance_path, exist_ok = True)
     db.init_app(app)
 
     from . import models

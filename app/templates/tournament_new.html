@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New tournament</h1>
+<form method="post">
+  <label>Name <input name="name" required></label>
+  <label>Rounds <input name="num_rounds" type="number" min="1" value="7"></label>
+  <button>Create</button>
+</form>
+{% endblock %}
