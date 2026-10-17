@@ -18,8 +18,27 @@
 
 <h2>Add team</h2>
 <form method="post" action="{{ url_for('main.add_team', tournament_id=t.id) }}">
-  <label>School <input name="school" list="schools" required></label>
-  <datalist id="schools">{% for s in schools %}<option value="{{ s.name }}">{% endfor %}</datalist>
-  <button>Add team</button>
+    <label>School <input name="school" list="schools" required></label>
+    <datalist id="schools">{% for s in schools %}<option value="{{ s.name }}">{% endfor %}</datalist>
+    <fieldset>
+        <legend>Core Players (listed in board order, strongest first)</legend>
+        <table>
+            <thead>
+                <tr><th>Board</th><th>Name</th><th>Lichess Username</th><th>USCF ID</th><th>USCF Rating</th></tr>
+            </thead>
+            <tbody>
+                {% for board in range(1, 5) %}
+                <tr>
+                    <td>{{  board  }}</td></td>
+                    <td><input name="name" required></td>
+                    <td><input name ="lichess_username" required></td>
+                    <td><input name = "uscf_id"></td>
+                    <td><input name = "rating"></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+    <button>Add team</button>
 </form>
 {% endblock %}

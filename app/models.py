@@ -25,11 +25,13 @@ class Player(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
-    rating = db.Column(db.Integer)
+    uscf_id = db.Column(db.Integer, nullable = True) #players are not required to have a uscf id/rating
+    rating = db.Column(db.Integer, nullable = True)
     tournament_id = db.Column(db.Integer, db.ForeignKey("tournament.id"), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey("school.id"), nullable=False)
     is_core = db.Column(db.Boolean, nullable=False, default=False)
     core_team_id = db.Column(db.Integer, db.ForeignKey("team.id"), nullable=True)
+    lichess_username = db.Column(db.String(120), nullable = False)
     board = db.Column(db.Integer, nullable=True)
 
     __table_args__ = (

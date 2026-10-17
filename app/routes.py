@@ -52,9 +52,11 @@ def tournament(tournament_id):
 @bp.post("/tournaments/<int:tournament_id>/teams")
 def add_team(tournament_id):
     t = db.get_or_404(Tournament, tournament_id)
-    if t.rounds:
-        flash("Teams can't be added after pairings have been made.")
-        return redirect(url_for("main.tournament", tournament_id=t.id))
+
+    player_names = [value.strip() for value in request.form.getlist("name")]
+    lichess_names = [value.strip() for value in request.form.getlist("lichess_username")]
+    uscf_ids = [value.strip() for value in request.form.getlist("uscf_id")]
+    ratings = [value.strip() for value in request.form.getlist("rating")]
 
     school = get_or_create_school(request.form.get("school"))
     if not school:

@@ -24,7 +24,7 @@ def team_standings(tournament):
 
     for team_id, opp, gp in results:
         if opp is not None:
-            rows[team_id]"tb" += gp gp*rows[opp]["mp"]
+            rows[team_id]["tb"] += gp * rows[opp]["mp"]
 
     ordered = sorted(rows.values(), key=lambda r: (-r["mp"], -r["tb"], -r["gp"], r["team"].name), )
     for i, r in enumerate(ordered, 1):
