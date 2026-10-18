@@ -1,7 +1,7 @@
 from collections import defaultdict
 from . models import BOARDS, Game, Match, Round
 
-MP_THRESHOLD = 2.5
+MP_THRESHOLD = 2.0
 FULL_BYE_GAME_POINTS = 2.5
 HALF_BYE_GAME_POINTS = 2.0
 ZERO_BYE_GAME_POINTS = 0.0
@@ -23,6 +23,14 @@ def team_standings(tournament):
     results = list(completed_results(tournament))
 
     for team_id, opp, gp in results:
+        rows[team_id]["gp"] += gp
+        rows[team_id]["played"] += 1
+        if gp > MP_THRESHOLD:
+            rows[team_id] += 1
+        if gp == MP_THRESHOLD:
+            rows[team_id] += 0.5
+
+    for team_id, opp, gp in results:
         if opp is not None:
             rows[team_id]["tb"] += gp * rows[opp]["mp"]
 
@@ -40,14 +48,11 @@ def board_standings(tournament):
 
     stats = {}
     for g in games:
-        for player, score in (
-            (g.player1, g.score1), (g.player2, g.score2), ):
-            eligible_board = player.board
-            if eligible_board not in range(1, BOARDS + 1):
-                continue
+        for player, score in ((g.player1, g.score1), (g.player2, g.score2)):
             row = stats.setdefault(player.id, {"player": player, "points": 0.0, "games": 0, "board": eligible_board, }, )
             row["points"] += score
             row["games"] += 1
+            row["board"] = max(row["board"], g.board)
 
     by_board = defaultdict(list)
     for row in stats.values():
