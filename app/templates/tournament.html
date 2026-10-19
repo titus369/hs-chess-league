@@ -5,11 +5,11 @@
 
 <h2>Team standings</h2>
 <table border="1" cellpadding="4">
-  <tr><th>#</th><th>Team</th><th>Played</th><th>MP</th><th>Tiebreak</th><th>GP</th></tr>
+  <tr><th>#</th><th>Team</th><th>Played</th><th>Byes</th><th>MP</th><th>GP</th></tr>
   {% for r in standings %}
   <tr>
-    <td>{{ r.rank }}</td><td>{{ r.team.name }}</td><td>{{ r.played }}</td>
-    <td>{{ r.mp }}</td><td>{{ '%g'|format(r.tb) }}</td><td>{{ '%g'|format(r.gp) }}</td>
+    <td>{{ r.rank }}</td><td>{{ r.team.name }}</td><td>{{ r.played }}</td><td>{{ r.byes }}</td>
+    <td>{{ '%g'|format(r.mp) }}</td><td>{{ '%g'|format(r.gp) }}</td>
   </tr>
   {% else %}
   <tr><td colspan="6">No teams yet.</td></tr>

@@ -1,7 +1,7 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from . import db
-from .models import School, Team, Tournament
+from .models import BOARDS, Player, RosterEntry, School, Team, Tournament
 from .standings import board_standings, team_standings
 bp = Blueprint("main", __name__)
 
@@ -62,7 +62,7 @@ def add_team(tournament_id):
     t = db.get_or_404(Tournament, tournament_id)
     back = redirect(url_for("main.tournament", tournament_id=t.id))
 
-    school_name = request.form.get("school","").strip()
+    school = request.form.get("school","").strip()
     names = [value.strip() for value in request.form.getlist("name")]
     lichess_names = [value.strip() for value in request.form.getlist("lichess_username")]
     uscf_ids = [value.strip() for value in request.form.getlist("uscf_id")]
@@ -72,7 +72,12 @@ def add_team(tournament_id):
         flash("Enter a school name.")
         return back
 
-    if (len(names) != BOARDS or len(lichess_names) != BOARDS or not all(names) or not all(lichess_names)):
+    if not (len(names) == BOARDS
+        and len(lichess_names) == BOARDS
+        and len(uscf_ids) == BOARDS
+        and len(ratings) == BOARDS
+        and all(names)
+        and all(lichess_names)):
         flash("Enter a name and Lichess username for all 4 core players.")
         return back
 
@@ -86,15 +91,33 @@ def add_team(tournament_id):
         flash("Error with uscf id's and ratings")
         return back
 
-    school = get_or_create_school(school_name)
-    existing = [x.team_number for x in t.teams if x.school_id == school.id]
-    team = Team(tournament = t, school = school, team_number=max(existing, default=0) + 1)
-    db.session.add(team)
+    try:
+        school = get_or_create_school(school)
+        existing = [x.team_number for x in t.teams if x.school_id == school.id]
+        team = Team(tournament = t, school = school, team_number=max(existing, default=0) + 1)
+        db.session.add(team)
 
-    for board in range(1, BOARDS + 1):
-        i = board - 1
-        db.session.add(Player(name=names[i], lichess_username=lichess_names[i], uscf_id=uscf_ids[i], rating=ratings[i], tournament=t, school=school, is_core=True, core_team=team, board=board))
-    db.session.commit()
+        for index in range(BOARDS):
+            player = Player(
+                tournament=t,
+                school=school,
+                name=names[index],
+                lichess_username=lichess_names[index],
+                uscf_id=uscf_ids[index],
+                rating=ratings[index]
+            )
+            entry = RosterEntry(
+                team=team,
+                player=player,
+                position=float(index + 1),
+                is_core=True
+            )
+            db.session.add_all([player, entry])
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+
     flash(f" Added {team.name} with {BOARDS} core players.")
     return back
 
