@@ -145,8 +145,8 @@ class Match(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     round_id = db.Column(db.Integer, db.ForeignKey("round.id"), nullable=False)
     table_number = db.Column(db.Integer, nullable=False)
-    home_team_id = db.Column(db.Integer, db.ForeignKey("team.id"), nullable=False)
-    away_team_id = db.Column(db.Integer, db.ForeignKey("team.id"), nullable=False)
+    home_team_id = db.Column(db.Integer, db.ForeignKey("team.id"), nullable=True)
+    away_team_id = db.Column(db.Integer, db.ForeignKey("team.id"), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("round_id", "table_number"),

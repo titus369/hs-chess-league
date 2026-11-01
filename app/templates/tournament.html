@@ -8,7 +8,9 @@
   <tr><th>#</th><th>Team</th><th>Played</th><th>Byes</th><th>MP</th><th>GP</th></tr>
   {% for r in standings %}
   <tr>
-    <td>{{ r.rank }}</td><td>{{ r.team.name }}</td><td>{{ r.played }}</td><td>{{ r.byes }}</td>
+    <td>{{ r.rank }}</td>
+    <td><a href="{{ url_for('main.team_roster', tournament_id=t.id, team_id=r.team.id) }}">{{ r.team.name }}</a></td>
+    <td>{{ r.played }}</td><td>{{ r.byes }}</td>
     <td>{{ '%g'|format(r.mp) }}</td><td>{{ '%g'|format(r.gp) }}</td>
   </tr>
   {% else %}
@@ -41,4 +43,6 @@
     </fieldset>
     <button>Add team</button>
 </form>
+
+<p>{% for n in range(1, t.num_rounds + 1) %}<a href="{{ url_for('main.round_page', tournament_id=t.id, number=n) }}">Round {{ n }}</a> {% endfor %}</p>
 {% endblock %}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ roster.team_name }} roster</title>
+</head>
+<body>
+  <h1>{{ roster.team_name }} roster</h1>
+  <ol>
+    {% for player in roster.players %}
+    <li>
+      {{ player.name }} ({{ 'Core' if player.is_core else 'Substitute' }})
+      &mdash; Rating: {{ player.rating if player.rating is not none else 'Unrated' }}
+      &mdash; Lichess: {{ player.lichess_username }}
+    </li>
+    {% else %}
+    <li>No roster members.</li>
+    {% endfor %}
+  </ol>
+</body>
+</html>
