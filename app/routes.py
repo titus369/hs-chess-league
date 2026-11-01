@@ -1,9 +1,12 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for, abort
 
 from . import db
 from .models import BOARDS, Player, RosterEntry, School, Team, Tournament
+from .rosters import roster_report, seeded_teams
 from .standings import board_standings, team_standings
+from .pairings import PairingError, create_round, round_byes, round_pairings, set_round_pairings
 bp = Blueprint("main", __name__)
+
 
 def get_or_create_school(name):
     name = " ".join((name or "").split())
@@ -48,6 +51,16 @@ def tournament(tournament_id):
         t = t,
         standings = team_standings(t), 
         schools = School.query.order_by(School.name).all(), )
+
+@bp.get("/tournaments/<int:tournament_id>/teams/<int:team_id>/roster")
+def team_roster(tournament_id, team_id):
+    t = db.get_or_404(Tournament, tournament_id)
+    team = Team.query.filter_by(id=team_id, tournament_id=t.id).first_or_404()
+    roster = next(
+        roster for roster in roster_report(t.id)
+        if roster.team_id == team.id
+    )
+    return render_template("team_roster.html", roster=roster)
 
 def to_int_or_none(value):
     value = (value or "").strip()
@@ -125,4 +138,60 @@ def add_team(tournament_id):
 def boards(tournament_id):
     t = db.get_or_404(Tournament, tournament_id)
     return render_template("boards.html", t=t, by_board=board_standings(t))
-        
+    
+#Round Routes
+def to_team_id(value):
+    value = (value or "").strip()
+    return int(value) if value.isdigit() else None
+ 
+ 
+@bp.route("/tournaments/<int:tournament_id>/rounds/<int:number>", methods=["GET", "POST"])
+def round_page(tournament_id, number):
+    t = db.get_or_404(Tournament, tournament_id)
+    if not 1 <= number <= t.num_rounds:
+        abort(404)
+ 
+    if request.method == "POST":
+        try:
+            if request.form.get("action") == "create":
+                create_round(t, number, to_team_id(request.form.get("num_tables")))
+                warnings = []
+                db.session.commit()
+                flash(f"Round {number} created.")
+            else:
+                slots = {
+                    m.table_number: (
+                        to_team_id(request.form.get(f"home_{m.table_number}")),
+                        to_team_id(request.form.get(f"away_{m.table_number}")),
+                    )
+                    for m in round_pairings(t, number)
+                }
+                byes = []
+                i = 1
+                while f"bye_team_{i}" in request.form:
+                    byes.append((to_team_id(request.form.get(f"bye_team_{i}")),
+                                 request.form.get(f"bye_type_{i}", "")))
+                    i += 1
+                warnings = set_round_pairings(t, number, slots, byes)
+                db.session.commit()
+                flash("Pairings saved.")
+        except PairingError as err:
+            db.session.rollback()
+            flash(str(err))
+        else:
+            for w in warnings:
+                flash("Warning: " + w)
+        return redirect(url_for("main.round_page", tournament_id=t.id, number=number))
+ 
+    matches = round_pairings(t, number)
+    bye_rows = [{"team_id": b.team_id, "bye_type": b.bye_type} for b in round_byes(t, number)]
+    bye_rows += [{"team_id": None, "bye_type": "half"}] * max(1, 3 - len(bye_rows))
+    return render_template(
+        "round.html",
+        t=t,
+        number=number,
+        seeds=seeded_teams(t.id),
+        matches=matches,
+        bye_rows=bye_rows,
+        default_tables=len(t.teams) // 2,
+    )

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">&larr; {{ t.name }}</a></p>
+<h1>Round {{ number }} pairings</h1>
+
+{% if not matches %}
+<p>This round hasn't been set up yet. Creating it adds the tables, each with 4 empty boards. Teams and players are added afterwards.</p>
+<form method="post">
+  <input type="hidden" name="action" value="create">
+  <label>Tables <input name="num_tables" type="number" min="1" value="{{ default_tables }}"></label>
+  <button>Create round {{ number }}</button>
+</form>
+{% else %}
+<p>Teams are listed by pairing number. Home has White on boards 1 and 3. Leave a table's boxes empty until you know the teams.</p>
+<form method="post">
+  <input type="hidden" name="action" value="save">
+  <h2>Tables</h2>
+  <table border="1" cellpadding="4">
+    <tr><th>Table</th><th>Home</th><th>Away</th></tr>
+    {% for m in matches %}
+    <tr>
+      <td>{{ m.table_number }}</td>
+      <td>
+        <select name="home_{{ m.table_number }}">
+          <option value="">--</option>
+          {% for s in seeds %}
+          <option value="{{ s.team.id }}" {% if m.home_team_id == s.team.id %}selected{% endif %}>#{{ s.number }} {{ s.team.name }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td>
+        <select name="away_{{ m.table_number }}">
+          <option value="">--</option>
+          {% for s in seeds %}
+          <option value="{{ s.team.id }}" {% if m.away_team_id == s.team.id %}selected{% endif %}>#{{ s.number }} {{ s.team.name }}</option>
+          {% endfor %}
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <h2>Byes</h2>
+  <p>A team's 4th requested or late-join half bye is saved as a zero-point bye.</p>
+  <table border="1" cellpadding="4">
+    <tr><th>Team</th><th>Bye</th></tr>
+    {% for b in bye_rows %}
+    {% set i = loop.index %}
+    <tr>
+      <td>
+        <select name="bye_team_{{ i }}">
+          <option value="">--</option>
+          {% for s in seeds %}
+          <option value="{{ s.team.id }}" {% if b.team_id == s.team.id %}selected{% endif %}>#{{ s.number }} {{ s.team.name }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td>
+        <select name="bye_type_{{ i }}">
+          {% for value, label in [('full', 'Full point'), ('half', 'Half point'), ('zero', 'Zero point')] %}
+          <option value="{{ value }}" {% if b.bye_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <button>Save pairings</button>
+</form>
+{% endif %}
+{% endblock %}
