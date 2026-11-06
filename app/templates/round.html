@@ -33,6 +33,10 @@
   <label>Number of tables <input name="num_tables" type="number" min="1" required></label>
   <button>Create round {{ number }}</button>
 </form>
+<form method="post">
+  <input type="hidden" name="action" value="generate">
+  <button>Generate suggested pairings</button>
+</form>
 {% set requested_byes = bye_rows|selectattr('source', 'equalto', 'requested')|list %}
 {% if requested_byes %}
 <h2>Requested byes for round {{ number }}</h2>
@@ -103,6 +107,10 @@
     {% endfor %}
   </table>
   <button>Save pairings</button>
+</form>
+<form method="post"{% if (matches|selectattr('home_team_id')|list) or (matches|selectattr('away_team_id')|list) %} onsubmit="return confirm('Replace the current team pairings with newly generated suggestions? Byes you entered by hand are kept only if they were requested.');"{% endif %}>
+  <input type="hidden" name="action" value="generate">
+  <button type="submit">Generate suggested pairings</button>
 </form>
 <form method="post" onsubmit="return confirm('Clear this round’s team pairings, lineups, and results? Requested byes will be kept.');">
   <input type="hidden" name="action" value="clear">

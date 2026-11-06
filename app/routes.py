@@ -5,7 +5,7 @@ from . import db
 from .models import BOARDS, MAX_HALF_BYES, Bye, Game, Match, Player, RosterEntry, Round, School, Team, Tournament
 from .rosters import roster_report, seeded_teams
 from .standings import board_standings, team_standings
-from .pairings import PairingError, clear_round, create_round, get_round, resize_round, round_byes, round_pairings, set_round_pairings
+from .pairings import PairingError, apply_generated_pairings, clear_round, create_round, get_round, resize_round, round_byes, round_pairings, set_round_pairings
 bp = Blueprint("main", __name__)
 
 
@@ -600,6 +600,12 @@ def round_page(tournament_id, number):
                 db.session.commit()
                 warnings = []
                 flash(f"Round {number} pairings, lineups, and results cleared. Requested byes were kept.")
+            elif action == "generate":
+                notes, warnings = apply_generated_pairings(t, number)
+                db.session.commit()
+                flash("Suggested pairings generated. Review and edit them below, then save.")
+                for n in notes:
+                    flash("Note: " + n)
             elif action == "save":
                 existing_bye_sources = {
                     bye.team_id: bye.source
