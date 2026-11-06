@@ -2,20 +2,22 @@ from collections import defaultdict
 from sqlalchemy.orm import joinedload, selectinload
 from .models import BOARDS, Game, Match, Round, match_points_for
 
-def team_standings(tournament):
-    rounds = (
+def team_standings(tournament, before_round=None):
+    rounds_query = (
         Round.query.filter_by(tournament_id = tournament.id)
         .order_by(Round.number)
         .options(
             selectinload(Round.matches).selectinload(Match.games),
             selectinload(Round.byes),
         )
-        .all()
     )
+    if before_round is not None:
+        rounds_query = rounds_query.filter(Round.number < before_round)
+    rounds = rounds_query.all()
 
-    return build_team_standings(tournament.teams, rounds)
+    return build_team_standings(tournament.teams, rounds, include_uncompleted_byes=before_round is not None)
 
-def build_team_standings(teams, rounds):
+def build_team_standings(teams, rounds, include_uncompleted_byes=False):
     rows = {
         t.id: {"team": t, "mp": 0.0, "gp": 0.0, "played": 0, "byes": 0} for t in teams
     }
@@ -33,7 +35,7 @@ def build_team_standings(teams, rounds):
     
     reached = max((rd.number for rd in rounds if any(m.is_complete for m in rd.matches)), default=0)
     for rd in rounds:
-        if rd.number > reached:
+        if not include_uncompleted_byes and rd.number > reached:
             continue
         for bye in rd.byes:
             row  = rows[bye.team_id]
@@ -41,11 +43,14 @@ def build_team_standings(teams, rounds):
             row["gp"] += bye.game_points
             row["byes"] += 1
 
-    ordered = sorted(rows.values(), key=lambda r: (-r["mp"], -r["gp"], r["team"].name),)
+    ordered = sorted(
+        rows.values(),
+        key=lambda r: (-r["mp"], -r["team"].avg_rating, r["team"].name),
+    )
 
     rank, prev = 0, None
     for position, r in enumerate(ordered, start=1):
-        key=(r["mp"], r["gp"])
+        key = (r["mp"], r["team"].avg_rating)
         if key != prev:
             rank, prev = position, key
         r["rank"] = rank

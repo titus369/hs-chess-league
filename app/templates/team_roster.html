@@ -6,6 +6,8 @@
 </head>
 <body>
   <h1>{{ roster.team_name }} roster</h1>
+  <p><a href="{{ url_for('main.team_history', tournament_id=t.id, team_id=roster.team_id) }}">Round-by-round history</a></p>
+  <p><a href="{{ url_for('main.edit_team', tournament_id=t.id, team_id=roster.team_id) }}">Edit team and roster</a></p>
   <ol>
     {% for player in roster.players %}
     <li>

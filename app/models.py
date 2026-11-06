@@ -55,7 +55,6 @@ class Player(db.Model):
     tournament_id = db.Column(db.Integer, db.ForeignKey("tournament.id"), nullable=False)
     school_id = db.Column(db.Integer, db.ForeignKey("school.id"), nullable=False)
     name = db.Column(db.String(120), nullable=False)
-    uscf_id = db.Column(db.Integer, nullable = True) #players are not required to have a uscf id/rating
     rating = db.Column(db.Integer, nullable = True)
     lichess_username = db.Column(db.String(120), nullable = False)
 

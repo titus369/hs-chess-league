@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">&larr; {{ t.name }}</a></p>
+<h1>{{ team.name }} round-by-round history</h1>
+<p><a href="{{ url_for('main.team_roster', tournament_id=t.id, team_id=team.id) }}">View team roster</a></p>
+
+<table border="1" cellpadding="4">
+  <tr><th>Round</th><th>Pairing / bye</th><th>Result</th></tr>
+  {% for row in history %}
+  <tr>
+    <td>{{ row.number }}</td>
+    <td>
+      {% if row.match %}
+        {% if row.opponent %}
+          <details>
+            <summary>
+              {{ team.name }} vs {{ row.opponent.name }}
+              (Table {{ row.match.table_number }})
+            </summary>
+            <table border="1" cellpadding="4">
+              <tr><th>Board</th><th>{{ row.match.home_team.name if row.match.home_team else 'Home team' }}</th><th>Result</th><th>{{ row.match.away_team.name if row.match.away_team else 'Away team' }}</th></tr>
+              {% for game in row.match.games %}
+              <tr>
+                <td>{{ game.board }}</td>
+                <td>{{ game.home_player.name if game.home_player else '-' }}</td>
+                <td>
+                  {% if game.home_score is not none %}
+                    {{ '%g'|format(game.home_score) }}-{{ '%g'|format(game.away_score) }}
+                  {% else %}
+                    Not entered
+                  {% endif %}
+                </td>
+                <td>{{ game.away_player.name if game.away_player else '-' }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+          </details>
+        {% else %}
+          Pairing pending
+        {% endif %}
+      {% elif row.bye %}
+        {{ row.bye.bye_type|capitalize }}-point bye
+        {% if row.bye.source == 'requested' %}(requested){% endif %}
+      {% else %}
+        No pairing recorded
+      {% endif %}
+    </td>
+    <td>
+      {% if row.match and row.opponent %}
+        {% if row.complete %}
+          {{ '%g'|format(row.team_points) }}-{{ '%g'|format(row.opponent_points) }} game points
+          ({{ '%g'|format(row.match.home_match_points if row.is_home else row.match.away_match_points) }}-{{ '%g'|format(row.match.away_match_points if row.is_home else row.match.home_match_points) }} match points)
+        {% elif row.team_points or row.opponent_points %}
+          In progress: {{ '%g'|format(row.team_points) }}-{{ '%g'|format(row.opponent_points) }} game points
+        {% else %}
+          Not played
+        {% endif %}
+      {% elif row.bye %}
+        {{ '%g'|format(row.bye.game_points) }} game points,
+        {{ '%g'|format(row.bye.match_points) }} match points
+      {% else %}
+        -
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

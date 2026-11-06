@@ -3,7 +3,7 @@ from . import db
 from .models import BOARDS, MAX_HALF_BYES, Bye, Game, Match, Round
 
 BYE_TYPES = ("full", "half","zero")
-DEFAULT_SOURCE = {"full": "odd", "half": "requested", "zero": "default"}
+DEFAULT_SOURCE = {"full": "odd", "half": "requested", "zero": "requested"}
 
 class PairingError(ValueError):
     """Raised when a round can't be created or its pairings can't be saved."""
@@ -32,15 +32,12 @@ def all_pairings(tournament):
         for rd in rounds if rd.matches
     }
 
-def create_round(tournament, number, num_tables = None):
+def create_round(tournament, number, num_tables):
     if not 1 <= number <= tournament.num_rounds:
         raise PairingError(f"Round {number} is outside this tournament's range of rounds: 1 to {tournament.num_rounds}.")
 
-    if num_tables is None:
-        num_tables = len(tournament.teams) // 2
-    
     if num_tables < 1:
-        raise PairingError("Add at least 2 teams before creating a round.")
+        raise PairingError("A round must have at least 1 table.")
 
     rd = get_round(tournament, number)
     if rd is None:
@@ -56,6 +53,63 @@ def create_round(tournament, number, num_tables = None):
     db.session.flush()
     db.session.expire(rd, ["matches"])
     return rd
+
+def resize_round(tournament, number, num_tables):
+    rd = get_round(tournament, number)
+    if rd is None:
+        return create_round(tournament, number, num_tables)
+    if num_tables < 1:
+        raise PairingError("A round must have at least 1 table.")
+
+    matches = {match.table_number: match for match in rd.matches}
+    for table_number in range(num_tables + 1, max(matches, default=0) + 1):
+        match = matches.get(table_number)
+        if match is None:
+            continue
+        has_lineups_or_results = any(
+            game.home_player_id is not None
+            or game.away_player_id is not None
+            or game.home_score is not None
+            or game.away_score is not None
+            for game in match.games
+        )
+        if match.home_team_id is not None or match.away_team_id is not None or has_lineups_or_results:
+            raise PairingError(
+                f"Table {table_number} has teams, lineups, or results. Clear or reassign it before reducing the table count."
+            )
+
+    for table_number, match in matches.items():
+        if table_number > num_tables:
+            db.session.delete(match)
+
+    existing = {table for table in matches if table <= num_tables}
+    for table_number in range(1, num_tables + 1):
+        if table_number not in existing:
+            db.session.add(Match(
+                round=rd,
+                table_number=table_number,
+                games=[Game(board=board) for board in range(1, BOARDS + 1)],
+            ))
+
+    db.session.flush()
+    db.session.expire(rd, ["matches"])
+    return rd
+
+def clear_round(rd):
+    for match in rd.matches:
+        match.home_team = None
+        match.away_team = None
+        for game in match.games:
+            game.home_player = None
+            game.away_player = None
+            game.home_score = None
+            game.away_score = None
+
+    for bye in list(rd.byes):
+        if bye.source != "requested":
+            db.session.delete(bye)
+
+    db.session.flush()
 
 def set_round_pairings(tournament, number, slots, byes=()):
     rd = get_round(tournament, number)
@@ -95,10 +149,10 @@ def set_round_pairings(tournament, number, slots, byes=()):
         if bye_type not in BYE_TYPES:
             raise PairingError(f"Unknown bye type ' {bye_type}'.")
 
-        source = entry[2] if len(entry) > 2 else DEFAULT_SOURCE[bye_type]
+        source = entry[2] if len(entry) > 2 and entry[2] else DEFAULT_SOURCE[bye_type]
         claim(team_id, f"a {bye_type} bye")
         if (bye_type == "half" and source in ("requested", "late_join") and _half_byes_used(tournament, number, team_id) >= MAX_HALF_BYES):
-            bye_type, source = "zero", "default"
+            bye_type, source = "zero", "requested"
             warnings.append(f"{teams[team_id].name} already has {MAX_HALF_BYES} half-point byes, so this is defaulted as a zero-point bye.")
         bye_plan.append((team_id, bye_type, source))
 

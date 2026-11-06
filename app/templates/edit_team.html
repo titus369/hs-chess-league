@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Edit {{ team.name }} and roster</h1>
+
+<form method="post">
+  <label>
+    School
+    <input name="school" value="{{ team.school.name }}">
+  </label>
+
+  <h2>Roster</h2>
+
+  {% for entry in entries %}
+  {% set key = "e_" ~ entry.id %}
+  <fieldset>
+    <input type="hidden" name="row" value="{{ key }}">
+    <label>
+      Core
+      <input type="checkbox" name="{{ key }}_core" value="1"
+             {% if entry.is_core %}checked{% endif %}>
+    </label>
+    <label>
+      Name
+      <input name="{{ key }}_name" value="{{ entry.player.name }}">
+    </label>
+    <label>
+      Lichess username
+      <input name="{{ key }}_username"
+             value="{{ entry.player.lichess_username }}">
+    </label>
+    <label>
+      Rating
+      <input name="{{ key }}_rating"
+             value="{{ entry.player.rating or '' }}">
+    </label>
+    <label>
+      Remove from team
+      <input type="checkbox" name="{{ key }}_remove" value="1">
+    </label>
+  </fieldset>
+  {% endfor %}
+
+  <h2>Add players</h2>
+  <p>Select an existing player from this school or enter details for a new player. Core players on a higher team cannot join a lower team.</p>
+  {% for number in new_rows %}
+  {% set key = "n_" ~ number %}
+  <fieldset>
+    <input type="hidden" name="row" value="{{ key }}">
+    <label>
+      Existing player
+      <select class="existing-player" name="{{ key }}_player_id"
+              data-name-target="{{ key }}_name"
+              data-username-target="{{ key }}_username"
+              data-rating-target="{{ key }}_rating">
+        <option value="">-- Add a new player instead --</option>
+        {% for player in school_players %}
+        <option value="{{ player.id }}"
+                data-name="{{ player.name }}"
+                data-username="{{ player.lichess_username }}"
+                data-rating="{{ player.rating if player.rating is not none else '' }}">
+          {{ player.name }} ({{ player.lichess_username }}){% if player.core_team %} — Core on {{ player.core_team.name }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Core
+      <input type="checkbox" name="{{ key }}_core" value="1">
+    </label>
+    <label>Name <input name="{{ key }}_name"></label>
+    <label>Lichess username <input name="{{ key }}_username"></label>
+    <label>Rating <input name="{{ key }}_rating"></label>
+  </fieldset>
+  {% endfor %}
+
+  <button type="submit">Save team and roster</button>
+</form>
+<script>
+  document.querySelectorAll(".existing-player").forEach((select) => {
+    select.addEventListener("change", () => {
+      const option = select.selectedOptions[0];
+      const values = {
+        name: option.dataset.name || "",
+        username: option.dataset.username || "",
+        rating: option.dataset.rating || "",
+      };
+      document.getElementById(select.dataset.nameTarget).value = values.name;
+      document.getElementById(select.dataset.usernameTarget).value = values.username;
+      document.getElementById(select.dataset.ratingTarget).value = values.rating;
+    });
+  });
+</script>
+{% endblock %}
