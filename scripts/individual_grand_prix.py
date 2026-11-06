@@ -2,9 +2,12 @@ import io, re, requests
 import pandas as pd
 import chess.pgn
 from pathlib import Path
+import json
 
-INPUT_FILE = ""
-OUTPUT_FILE = ""
+INPUT_FILE = "grand_prix.xlsx"
+OUTPUT_FILE = "grand_prix_new.xlsx"
+TOURNAMENT_ID = "yLyBkTk7"
+TOURNAMENT_TYPE = "kickoff"
 
 WEEKLY_PRIZES = [20, 12, 8, 6, 4]
 KICKOFF_PRIZES = [30, 18, 12, 9, 6, 5, 4, 3, 2, 1]
@@ -62,7 +65,7 @@ def get_individual_results(tournament_id):
         params={"nb": 1000},
     )
 
-    return response.json()
+    return [json.loads(line) for line in response.text.splitlines() if line.strip()]
 
 def get_team_results(tournament_id):
     response = lichess_get(
