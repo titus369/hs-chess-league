@@ -11,6 +11,24 @@ DEFAULT_SOURCE = {"full": "odd", "half": "requested", "zero": "requested"}
 class PairingError(ValueError):
     """Raised when a round can't be created or its pairings can't be saved."""
  
+def previous_round_problem(tournament, number):
+    """Why round `number` can't be paired yet, or None if the previous round is complete."""
+    if number <= 1:
+        return None
+    prev = get_round(tournament, number - 1)
+    if prev is None or not prev.paired_matches:
+        return f"Round {number - 1} hasn't been paired yet. Pair and finish it before pairing round {number}."
+    if prev.incomplete_tables:
+        tables = ", ".join(str(n) for n in prev.incomplete_tables)
+        return (f"Round {number - 1} isn't complete (table {tables} still needs results). "
+                f"Finish it before pairing round {number}.")
+    return None
+
+def require_previous_round_complete(tournament, number):
+    problem = previous_round_problem(tournament, number)
+    if problem:
+        raise PairingError(problem)
+
 def get_round(tournament, number):
     return Round.query.filter_by(tournament_id=tournament.id, number=number).first()
  
@@ -38,6 +56,7 @@ def all_pairings(tournament):
 def create_round(tournament, number, num_tables):
     if not 1 <= number <= tournament.num_rounds:
         raise PairingError(f"Round {number} is outside this tournament's range of rounds: 1 to {tournament.num_rounds}.")
+    require_previous_round_complete(tournament, number)
  
     if num_tables < 1:
         raise PairingError("A round must have at least 1 table.")
@@ -115,6 +134,7 @@ def clear_round(rd):
     db.session.flush()
  
 def set_round_pairings(tournament, number, slots, byes=()):
+    require_previous_round_complete(tournament, number)
     rd = get_round(tournament, number)
     if rd is None:
         raise PairingError(f"Round {number} hasn't been created yet.")
@@ -188,6 +208,39 @@ def set_round_pairings(tournament, number, slots, byes=()):
         warnings.append(f"Not placed in round {number}: {','.join(unplaced)}.")
     return warnings
  
+def add_match(tournament, number, home_id, away_id):
+    """Add one more table to a round for two teams that aren't playing in it yet,
+    e.g. two teams that had byes. Their byes in this round are removed; existing
+    tables, lineups, and results are left alone. Returns pairing warnings."""
+    require_previous_round_complete(tournament, number)
+    rd = get_round(tournament, number)
+    if rd is None:
+        raise PairingError(f"Round {number} hasn't been created yet.")
+    teams = {t.id: t for t in tournament.teams}
+    if home_id not in teams or away_id not in teams:
+        raise PairingError("Choose two teams from this tournament.")
+    if home_id == away_id:
+        raise PairingError("A team can't play itself.")
+    for m in rd.matches:
+        for team_id in (home_id, away_id):
+            if team_id in (m.home_team_id, m.away_team_id):
+                raise PairingError(f"{teams[team_id].name} is already playing at table {m.table_number}.")
+
+    for bye in list(rd.byes):
+        if bye.team_id in (home_id, away_id):
+            db.session.delete(bye)
+    table = max((m.table_number for m in rd.matches), default=0) + 1
+    db.session.add(Match(
+        round=rd,
+        table_number=table,
+        home_team=teams[home_id],
+        away_team=teams[away_id],
+        games=[Game(board=b) for b in range(1, BOARDS + 1)],
+    ))
+    db.session.flush()
+    db.session.expire(rd, ["matches", "byes"])
+    return table, pairing_warnings(rd)
+
 def pairing_warnings(rd):
     met = {}
     for m in _other_matches(rd):
@@ -296,6 +349,7 @@ def suggest_round_pairings(tournament, number):
  
 def apply_generated_pairings(tournament, number):
     """Replace this round's teams with a generated suggestion. Returns (notes, warnings)."""
+    require_previous_round_complete(tournament, number)
     rd = get_round(tournament, number)
     if rd is not None:
         for m in rd.matches:
