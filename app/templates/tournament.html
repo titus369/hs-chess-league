@@ -25,11 +25,17 @@
     <datalist id="schools">{% for s in schools %}<option value="{{ s.name }}">{% endfor %}</datalist>
     <fieldset>
         <legend>Core Players (listed in board order, strongest first)</legend>
+        <p>
+            Paste the 4 core players from Google Sheets (Name, Lichess username, Rating; a leading board-number column and a header row are fine), then click <b>Fill players</b>.<br>
+            <textarea id="core-paste" rows="4" cols="70" placeholder="Paste rows from Google Sheets here"></textarea><br>
+            <button type="button" id="core-paste-fill">Fill players</button>
+            <span id="core-paste-status"></span>
+        </p>
         <table>
             <thead>
                 <tr><th>Board</th><th>Name</th><th>Lichess Username</th><th>Rating</th></tr>
             </thead>
-            <tbody>
+            <tbody id="core-rows">
                 {% for board in range(1, 5) %}
                 <tr>
                     <td>{{  board  }}</td>
@@ -59,4 +65,25 @@
 </form>
 
 <p>{% for n in range(1, t.num_rounds + 1) %}<a href="{{ url_for('main.round_page', tournament_id=t.id, number=n) }}">Round {{ n }}</a> {% endfor %}</p>
+<script>
+  document.getElementById("core-paste-fill").addEventListener("click", () => {
+    const header = /^(board|name|username|lichess( username)?|rating)$/i;
+    const rows = document.getElementById("core-paste").value.split(/\r?\n/)
+      .map((line) => line.split("\t").map((cell) => cell.trim()))
+      .filter((cells) => cells.some((c) => c) && !cells.some((c) => header.test(c)))
+      .map((cells) => (cells.length >= 4 && /^\d+$/.test(cells[0]) ? cells.slice(1) : cells));
+    const inputs = [...document.querySelectorAll("#core-rows tr")].map((tr) => tr.querySelectorAll("input"));
+    inputs.forEach(([name, username, rating], i) => {
+      const [n = "", u = "", r = ""] = rows[i] || [];
+      name.value = n;
+      username.value = u;
+      rating.value = /^\d+$/.test(r) ? r : "";
+    });
+    const notes = [];
+    if (rows.length > inputs.length) notes.push(`only the first ${inputs.length} rows were used`);
+    if (rows.some((cells) => cells[2] && !/^\d+$/.test(cells[2]))) notes.push("non-numeric ratings were left blank");
+    document.getElementById("core-paste-status").textContent =
+      `Filled ${Math.min(rows.length, inputs.length)} of ${inputs.length} players` + (notes.length ? ` (${notes.join("; ")}).` : ".");
+  });
+</script>
 {% endblock %}

@@ -1,5 +1,5 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for, abort
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from . import db
 from .models import BOARDS, MAX_HALF_BYES, Bye, Game, Match, Player, RosterEntry, Round, School, Team, Tournament
@@ -652,6 +652,55 @@ RESULTS = {
 }
 
 
+def add_pasted_substitute(team, game, side):
+    """Turn a pasted player who isn't on `team`'s roster into a roster substitute.
+    Reuses the school's existing player with that Lichess username if there is one,
+    otherwise creates the player. Returns the player id. Raises PairingError if the
+    player can't join this team; the caller's rollback undoes anything added here."""
+    name = request.form.get(f"{side}_new_name_{game.id}", "").strip()
+    username = request.form.get(f"{side}_new_username_{game.id}", "").strip()
+    raw_rating = request.form.get(f"{side}_new_rating_{game.id}", "").strip()
+    where = f"{side.title()} board {game.board}"
+    if not name or not username:
+        raise PairingError(f"{where}: a new substitute needs a name and Lichess username.")
+    try:
+        rating = to_int_or_none(raw_rating)
+    except ValueError:
+        raise PairingError(f"{where}: rating '{raw_rating}' isn't a number.")
+
+    player = Player.query.filter(
+        Player.tournament_id == team.tournament_id,
+        func.lower(Player.lichess_username) == username.lower(),
+    ).first()
+    if player is not None:
+        if player.school_id != team.school_id:
+            raise PairingError(
+                f"{where}: Lichess username {username} belongs to {player.name} of {player.school.name}, "
+                f"who can't play for {team.name}."
+            )
+        if any(entry.team_id == team.id for entry in player.roster_entries):
+            return player.id
+        core_team = player.core_team
+        if core_team and core_team.school_id == team.school_id and core_team.team_number < team.team_number:
+            raise PairingError(
+                f"{where}: {player.name} is core on {core_team.name} and can't join the lower team {team.name}."
+            )
+    else:
+        player = Player(
+            tournament_id=team.tournament_id,
+            school_id=team.school_id,
+            name=name,
+            lichess_username=username,
+            rating=rating,
+        )
+        db.session.add(player)
+
+    last_position = max((entry.position for entry in team.roster), default=0.0)
+    db.session.add(RosterEntry(team=team, player=player, position=last_position + 1.0, is_core=False))
+    db.session.flush()
+    return player.id
+
+
 def save_match_lineup(match):
     if match.home_team is None or match.away_team is None:
         raise PairingError("Assign both teams before entering player lineups.")
@@ -677,9 +726,13 @@ def save_match_lineup(match):
         for side, present in (("home", home_present), ("away", away_present)):
             team = teams[side]
             raw_player_id = request.form.get(f"{side}_player_{game.id}", "").strip()
-            if raw_player_id and not raw_player_id.isdigit():
+            if raw_player_id == "new" and present is not False:
+                player_id = add_pasted_substitute(team, game, side)
+                roster_players[side][player_id] = db.session.get(Player, player_id)
+            elif raw_player_id and not raw_player_id.isdigit() and raw_player_id != "new":
                 raise PairingError("Choose a valid roster player for each board.")
-            player_id = int(raw_player_id) if raw_player_id else None
+            else:
+                player_id = int(raw_player_id) if raw_player_id.isdigit() else None
 
             if present is False:
                 # This side forfeited: nobody played for it on this board.

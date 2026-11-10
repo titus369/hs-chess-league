@@ -141,45 +141,48 @@
 
 <h2>Player lineups</h2>
 <p>Results are home&ndash;away. F marks a forfeit: 1F-0F means the away player didn't show, 0F-1F the home player didn't, 0F-0F neither. A player box can be left empty (--) for a side that forfeits or until the lineup is known.</p>
-{% for m in matches %}
-<h3>Table {{ m.table_number }}{% if m.home_team and m.away_team %}: {{ m.home_team.name }} vs {{ m.away_team.name }}{% endif %}</h3>
-{% if m.home_team and m.away_team %}
-<form method="post">
-  <input type="hidden" name="action" value="lineup">
-  <input type="hidden" name="match_id" value="{{ m.id }}">
-  <table border="1" cellpadding="4">
-    <tr><th>Board</th><th>{{ m.home_team.name }}</th><th>Result</th><th>{{ m.away_team.name }}</th></tr>
-    {% for g in m.games %}
-    <tr>
-      <td>{{ g.board }}</td>
+<p>To fill a table from Google Sheets, copy its 4 board rows (Home name, Home username, Home rating, Result, Away name, Away username, Away rating; a leading board-number column and a header row are fine), paste them into that table's box, click <b>Fill table</b>, check the boxes, then save. Players are matched to the roster by Lichess username. Anyone not on the roster is shown as &ldquo;New substitute&rdquo; and is added to the team as a substitute when you save, if they're eligible.</p>
+{% macro player_cell(side, team_id, g, selected_id) %}
       <td>
-        <select name="home_player_{{ g.id }}">
+        <select name="{{ side }}_player_{{ g.id }}" data-side="{{ side }}">
           <option value="">--</option>
-          {% for entry in roster_players[m.home_team_id] %}
-          <option value="{{ entry.player_id }}" {% if g.home_player_id == entry.player_id %}selected{% endif %}>
+          {% for entry in roster_players[team_id] %}
+          <option value="{{ entry.player_id }}" data-username="{{ entry.player.lichess_username|lower }}" data-name="{{ entry.player.name|lower }}" {% if selected_id == entry.player_id %}selected{% endif %}>
             {{ entry.player.name }}{% if entry.is_core %} (Core){% else %} (Substitute){% endif %}
           </option>
           {% endfor %}
         </select>
+        <input type="hidden" name="{{ side }}_new_name_{{ g.id }}">
+        <input type="hidden" name="{{ side }}_new_username_{{ g.id }}">
+        <input type="hidden" name="{{ side }}_new_rating_{{ g.id }}">
       </td>
+{% endmacro %}
+{% for m in matches %}
+<h3>Table {{ m.table_number }}{% if m.home_team and m.away_team %}: {{ m.home_team.name }} vs {{ m.away_team.name }}{% endif %}</h3>
+{% if m.home_team and m.away_team %}
+<form method="post" class="lineup-form">
+  <input type="hidden" name="action" value="lineup">
+  <input type="hidden" name="match_id" value="{{ m.id }}">
+  <p>
+    <textarea class="paste-box" rows="4" cols="90" placeholder="Paste table {{ m.table_number }}'s rows from Google Sheets here"></textarea><br>
+    <button type="button" class="paste-fill">Fill table</button>
+    <span class="paste-status"></span>
+  </p>
+  <table border="1" cellpadding="4">
+    <tr><th>Board</th><th>{{ m.home_team.name }}</th><th>Result</th><th>{{ m.away_team.name }}</th></tr>
+    {% for g in m.games %}
+    <tr class="board-row" data-board="{{ g.board }}" data-game="{{ g.id }}">
+      <td>{{ g.board }}</td>
+{{ player_cell('home', m.home_team_id, g, g.home_player_id) }}
       <td>
-        <select name="result_{{ g.id }}">
+        <select name="result_{{ g.id }}" data-result>
           <option value="" {% if g.result_code is none %}selected{% endif %}>--</option>
           {% for code in result_codes %}
           <option value="{{ code }}" {% if g.result_code == code %}selected{% endif %}>{{ code }}</option>
           {% endfor %}
         </select>
       </td>
-      <td>
-        <select name="away_player_{{ g.id }}">
-          <option value="">--</option>
-          {% for entry in roster_players[m.away_team_id] %}
-          <option value="{{ entry.player_id }}" {% if g.away_player_id == entry.player_id %}selected{% endif %}>
-            {{ entry.player.name }}{% if entry.is_core %} (Core){% else %} (Substitute){% endif %}
-          </option>
-          {% endfor %}
-        </select>
-      </td>
+{{ player_cell('away', m.away_team_id, g, g.away_player_id) }}
     </tr>
     {% endfor %}
   </table>
@@ -192,4 +195,82 @@
 <p>Create this round and assign teams before entering player lineups.</p>
 {% endfor %}
 {% endif %}
+<script>
+// Rows copied from Google Sheets arrive as tab-separated lines.
+function sheetRows(text) {
+  const header = /^(board|name|username|lichess( username)?|rating|result|home|away|white|black)$/i;
+  return text.split(/\r?\n/)
+    .map((line) => line.split("\t").map((cell) => cell.trim()))
+    .filter((cells) => cells.some((c) => c) && !cells.some((c) => header.test(c)));
+}
+
+function normalizeResult(raw) {
+  const r = raw.toUpperCase().replace(/\s+/g, "").replace(/[–—:]/g, "-")
+    .replace(/½|1\/2/g, "0.5").replace(/^\.5/, "0.5").replace(/-\.5$/, "-0.5");
+  const aliases = {"+-": "1F-0F", "+/-": "1F-0F", "-+": "0F-1F", "-/+": "0F-1F", "--": "0F-0F", "-/-": "0F-0F",
+                   "1-0": "1-0", "0-1": "0-1", "0.5-0.5": "0.5-0.5", "1F-0F": "1F-0F", "0F-1F": "0F-1F",
+                   "0F-0F": "0F-0F", "1F-0": "1F-0F", "0-1F": "0F-1F", "0F-0": "0F-0F"};
+  return r === "" ? "" : (aliases[r] || null);
+}
+
+function fillSide(row, side, name, username, rating) {
+  const select = row.querySelector(`select[data-side="${side}"]`);
+  const field = (kind) => row.querySelector(`input[name="${side}_new_${kind}_${row.dataset.game}"]`);
+  select.querySelector('option[value="new"]')?.remove();
+  ["name", "username", "rating"].forEach((kind) => { field(kind).value = ""; });
+  if (!name && !username) { select.value = ""; return "empty"; }
+
+  const options = [...select.options];
+  const match = username
+    ? options.find((o) => o.dataset.username === username.toLowerCase())
+    : options.find((o) => o.dataset.name === name.toLowerCase());
+  if (match) { select.value = match.value; return "matched"; }
+
+  field("name").value = name;
+  field("username").value = username;
+  field("rating").value = /^\d+$/.test(rating) ? rating : "";
+  const option = new Option(`New substitute: ${name || "?"} (${username || "no username"})`, "new");
+  select.add(option);
+  select.value = "new";
+  return "new";
+}
+
+document.querySelectorAll(".lineup-form").forEach((form) => {
+  form.querySelector(".paste-fill").addEventListener("click", () => {
+    const status = form.querySelector(".paste-status");
+    const boardRows = [...form.querySelectorAll(".board-row")];
+    const problems = [];
+    let filled = 0, added = 0;
+
+    sheetRows(form.querySelector(".paste-box").value).forEach((cells, index) => {
+      let board = index + 1;
+      // A leading board-number column shifts everything one cell right.
+      if (cells.length >= 8 && /^\d+$/.test(cells[0])) { board = Number(cells[0]); cells = cells.slice(1); }
+      while (cells.length < 7) cells.push("");
+      const row = boardRows.find((r) => Number(r.dataset.board) === board);
+      if (!row) { problems.push(`no board ${board}`); return; }
+
+      const [hName, hUser, hRating, rawResult, aName, aUser, aRating] = cells;
+      const result = normalizeResult(rawResult);
+      if (result === null) problems.push(`board ${board}: unknown result "${rawResult}"`);
+      else row.querySelector("select[data-result]").value = result;
+
+      // A side that forfeited has no player, whatever was typed in its cells.
+      const homeForfeit = result === "0F-1F" || result === "0F-0F";
+      const awayForfeit = result === "1F-0F" || result === "0F-0F";
+      for (const outcome of [
+        homeForfeit ? fillSide(row, "home", "", "", "") : fillSide(row, "home", hName, hUser, hRating),
+        awayForfeit ? fillSide(row, "away", "", "", "") : fillSide(row, "away", aName, aUser, aRating),
+      ]) {
+        if (outcome === "new") added += 1;
+      }
+      filled += 1;
+    });
+
+    status.textContent = `Filled ${filled} board${filled === 1 ? "" : "s"}`
+      + (added ? `; ${added} new substitute${added === 1 ? "" : "s"} will be added when you save` : "")
+      + (problems.length ? `. Check: ${problems.join("; ")}` : ".");
+  });
+});
+</script>
 {% endblock %}
