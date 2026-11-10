@@ -1,11 +1,11 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for, abort
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 
 from . import db
 from .models import BOARDS, MAX_HALF_BYES, Bye, Game, Match, Player, RosterEntry, Round, School, Team, Tournament
 from .rosters import roster_report, seeded_teams
 from .standings import board_standings, team_standings
-from .pairings import PairingError, apply_generated_pairings, clear_round, create_round, get_round, resize_round, round_byes, round_pairings, set_round_pairings
+from .pairings import PairingError, add_match, apply_generated_pairings, previous_round_problem, clear_round, create_round, get_round, resize_round, round_byes, round_pairings, set_round_pairings
 bp = Blueprint("main", __name__)
 
 
@@ -19,6 +19,54 @@ def get_or_create_school(name):
         db.session.add(school)
         db.session.flush()
     return school
+
+
+def round_has_pairings(rd):
+    return bool(
+        rd
+        and (
+            any(
+                match.home_team_id is not None
+                or match.away_team_id is not None
+                or any(
+                    game.home_player_id is not None
+                    or game.away_player_id is not None
+                    or game.home_score is not None
+                    or game.away_score is not None
+                    for game in match.games
+                )
+                for match in rd.matches
+            )
+            or any(bye.source != "requested" for bye in rd.byes)
+        )
+    )
+
+
+def current_round_number(t):
+    """The first round that isn't finished (every table scored). Rounds before it are complete."""
+    rounds_by_number = {rd.number: rd for rd in t.rounds}
+    for number in range(1, t.num_rounds + 1):
+        rd = rounds_by_number.get(number)
+        if rd is None or not rd.is_complete:
+            return number
+    return t.num_rounds + 1
+
+
+def team_game_counts(team):
+    """How many boards each player has been assigned to for this team (any round)."""
+    counts = {}
+    games = (
+        Game.query.join(Match, Game.match_id == Match.id)
+        .filter(or_(Match.home_team_id == team.id, Match.away_team_id == team.id))
+        .all()
+    )
+    for game in games:
+        for side in ("home", "away"):
+            player_id = getattr(game, f"{side}_player_id")
+            if player_id is not None and getattr(game.match, f"{side}_team_id") == team.id:
+                counts[player_id] = counts.get(player_id, 0) + 1
+    return counts
+
 
 @bp.get("/")
 def index():
@@ -61,7 +109,146 @@ def team_roster(tournament_id, team_id):
         roster for roster in roster_report(t.id)
         if roster.team_id == team.id
     )
-    return render_template("team_roster.html", t=t, roster=roster)
+    rounds_by_number = {rd.number: rd for rd in t.rounds}
+    current = current_round_number(t)
+    bye_rounds = []
+    for number in range(1, t.num_rounds + 1):
+        rd = rounds_by_number.get(number)
+        bye = next(
+            (bye for bye in rd.byes if bye.team_id == team.id),
+            None,
+        ) if rd else None
+        bye_rounds.append({
+            "number": number,
+            "bye_type": bye.bye_type if bye else "",
+            "editable": not round_has_pairings(rd),
+            "removable": bye is not None and number >= current,
+        })
+    return render_template(
+        "team_roster.html",
+        t=t,
+        roster=roster,
+        bye_rounds=bye_rounds,
+        game_counts=team_game_counts(team),
+    )
+
+
+@bp.post("/tournaments/<int:tournament_id>/teams/<int:team_id>/roster/<int:player_id>/remove")
+def remove_roster_player(tournament_id, team_id, player_id):
+    t = db.get_or_404(Tournament, tournament_id)
+    team = Team.query.filter_by(id=team_id, tournament_id=t.id).first_or_404()
+    entry = RosterEntry.query.filter_by(team_id=team.id, player_id=player_id).first_or_404()
+    name = entry.player.name
+    if team_game_counts(team).get(player_id):
+        flash(f"{name} has played for {team.name}, so they can't be removed from its roster.")
+    else:
+        db.session.delete(entry)
+        db.session.commit()
+        flash(f"Removed {name} from {team.name}'s roster.")
+    return redirect(url_for("main.team_roster", tournament_id=t.id, team_id=team.id))
+
+
+@bp.post("/tournaments/<int:tournament_id>/teams/<int:team_id>/roster/byes")
+def update_team_bye(tournament_id, team_id):
+    t = db.get_or_404(Tournament, tournament_id)
+    team = Team.query.filter_by(id=team_id, tournament_id=t.id).first_or_404()
+    raw_number = request.form.get("round_number", "").strip()
+    bye_type = request.form.get("bye_type", "")
+    if not raw_number.isdigit() or not 1 <= int(raw_number) <= t.num_rounds:
+        flash("Choose a valid tournament round.")
+        return redirect(url_for(
+            "main.team_roster",
+            tournament_id=t.id,
+            team_id=team.id,
+        ))
+    number = int(raw_number)
+    if bye_type not in ("", "half", "zero"):
+        flash("Choose a half-point or zero-point bye.")
+        return redirect(url_for(
+            "main.team_roster",
+            tournament_id=t.id,
+            team_id=team.id,
+        ))
+
+    rd = Round.query.filter_by(tournament_id=t.id, number=number).first()
+    bye = next(
+        (existing_bye for existing_bye in rd.byes if existing_bye.team_id == team.id),
+        None,
+    ) if rd else None
+
+    if not bye_type:
+        if bye is None:
+            flash(f"{team.name} has no bye in round {number}.")
+        elif number < current_round_number(t):
+            flash(f"Round {number} is complete; change its byes on the round {number} page.")
+        else:
+            paired = round_has_pairings(rd)
+            db.session.delete(bye)
+            db.session.commit()
+            flash(f"Removed {team.name}'s {bye.bye_type}-point bye for round {number}.")
+            if paired:
+                flash(f"{team.name} is not placed in round {number} now; pair it on the round {number} page.")
+        return redirect(url_for(
+            "main.team_roster",
+            tournament_id=t.id,
+            team_id=team.id,
+        ))
+
+    if round_has_pairings(rd):
+        flash(f"Round {number} has already been paired; its bye request can no longer be changed here.")
+        return redirect(url_for(
+            "main.team_roster",
+            tournament_id=t.id,
+            team_id=team.id,
+        ))
+
+    if bye and bye.source != "requested":
+        flash(f"{team.name}'s bye for round {number} was assigned during pairing and cannot be changed here.")
+        return redirect(url_for(
+            "main.team_roster",
+            tournament_id=t.id,
+            team_id=team.id,
+        ))
+
+    if bye_type == "half":
+        half_byes_used = (
+            Bye.query.join(Round, Bye.round_id == Round.id)
+            .filter(
+                Round.tournament_id == t.id,
+                Round.number != number,
+                Bye.team_id == team.id,
+                Bye.bye_type == "half",
+                Bye.source.in_(("requested", "late_join")),
+            )
+            .count()
+        )
+        if half_byes_used >= MAX_HALF_BYES:
+            bye_type = "zero"
+            flash(
+                f"{team.name} already has {MAX_HALF_BYES} half-point byes; "
+                f"a zero-point bye was requested for round {number} instead."
+            )
+
+    if rd is None:
+        rd = Round(tournament_id=t.id, number=number)
+        db.session.add(rd)
+        db.session.flush()
+    if bye:
+        bye.bye_type = bye_type
+    else:
+        db.session.add(Bye(
+            round=rd,
+            team=team,
+            bye_type=bye_type,
+            source="requested",
+        ))
+    db.session.commit()
+    flash(f"Saved {bye_type}-point bye request for {team.name} in round {number}.")
+    return redirect(url_for(
+        "main.team_roster",
+        tournament_id=t.id,
+        team_id=team.id,
+    ))
 
 @bp.get("/tournaments/<int:tournament_id>/teams/<int:team_id>/history")
 def team_history(tournament_id, team_id):
@@ -236,6 +423,8 @@ def edit_team(tournament_id, team_id):
         .all()
     )
 
+    game_counts = team_game_counts(team)
+
     if request.method == "POST":
         def return_to_edit():
             return redirect(url_for(
@@ -356,21 +545,7 @@ def edit_team(tournament_id, team_id):
         for key, entry in existing_entries.items():
             if key in retained_keys:
                 continue
-            assigned_game = (
-                Game.query.join(Match, Game.match_id == Match.id)
-                .filter(or_(
-                    and_(
-                        Match.home_team_id == team.id,
-                        Game.home_player_id == entry.player_id,
-                    ),
-                    and_(
-                        Match.away_team_id == team.id,
-                        Game.away_player_id == entry.player_id,
-                    ),
-                ))
-                .first()
-            )
-            if assigned_game:
+            if game_counts.get(entry.player_id):
                 flash(f"{entry.player.name} is already assigned in a {team.name} lineup and cannot be removed.")
                 return return_to_edit()
 
@@ -435,6 +610,7 @@ def edit_team(tournament_id, team_id):
         team=team,
         entries=team.roster,
         new_rows=range(1, 4),
+        game_counts=game_counts,
         school_players=[
             player for player in school_players
             if player.id not in current_player_ids
@@ -464,59 +640,63 @@ def to_table_count(value):
     return int(value)
 
 
+# result code -> (home_score, away_score, home_present, away_present)
+# A side that forfeits is stored with a NULL player.
+RESULTS = {
+    "0F-0F": (0.0, 0.0, False, False),
+    "1-0": (1.0, 0.0, True, True),
+    "0-1": (0.0, 1.0, True, True),
+    "0.5-0.5": (0.5, 0.5, True, True),
+    "1F-0F": (1.0, 0.0, True, False),
+    "0F-1F": (0.0, 1.0, False, True),
+}
+
+
 def save_match_lineup(match):
     if match.home_team is None or match.away_team is None:
         raise PairingError("Assign both teams before entering player lineups.")
     if len(match.games) != BOARDS:
         raise PairingError(f"A match lineup must have exactly {BOARDS} boards.")
 
-    selected_players = []
+    teams = {"home": match.home_team, "away": match.away_team}
+    roster_players = {
+        side: {entry.player_id: entry.player for entry in team.roster}
+        for side, team in teams.items()
+    }
+
     assignments = []
     scores = []
-    for side, team in (("home", match.home_team), ("away", match.away_team)):
-        roster_player_ids = {entry.player_id for entry in team.roster}
-        for game in match.games:
-            raw_player_id = request.form.get(
-                f"{side}_player_{game.id}", ""
-            ).strip()
+    for game in match.games:
+        result = request.form.get(f"result_{game.id}", "")
+        if result and result not in RESULTS:
+            raise PairingError(f"Board {game.board}: choose a valid result.")
+        home_score, away_score, home_present, away_present = (
+            RESULTS[result] if result else (None, None, None, None)
+        )
+
+        for side, present in (("home", home_present), ("away", away_present)):
+            team = teams[side]
+            raw_player_id = request.form.get(f"{side}_player_{game.id}", "").strip()
             if raw_player_id and not raw_player_id.isdigit():
                 raise PairingError("Choose a valid roster player for each board.")
-
             player_id = int(raw_player_id) if raw_player_id else None
-            if player_id is None:
+
+            if present is False:
+                # This side forfeited: nobody played for it on this board.
+                player_id = None
+            elif present and player_id is None:
                 raise PairingError(
-                    f"{side.title()} board {game.board}: select a player from {team.name}'s roster."
+                    f"Board {game.board}: a {result} result needs a {team.name} player. "
+                    f"Use a forfeit result if nobody played."
                 )
-            if player_id not in roster_player_ids:
+            if player_id is not None and player_id not in roster_players[side]:
                 raise PairingError(
                     f"{side.title()} board {game.board}: choose a player from {team.name}'s roster."
                 )
-
-            old_player_id = getattr(game, f"{side}_player_id")
-            if (
-                player_id != old_player_id
-                and (game.home_score is not None or game.away_score is not None)
-            ):
-                raise PairingError(
-                    f"Board {game.board} already has a result, so its lineup can't be changed."
-                )
             assignments.append((game, side, player_id))
-            if player_id is not None:
-                selected_players.append(player_id)
+        scores.append((game, home_score, away_score))
 
-    for game in match.games:
-        result = request.form.get(f"result_{game.id}", "")
-        if result not in ("", "home", "draw", "away"):
-            raise PairingError(f"Board {game.board}: choose a valid result.")
-        if result == "home":
-            scores.append((game, 1.0, 0.0))
-        elif result == "draw":
-            scores.append((game, 0.5, 0.5))
-        elif result == "away":
-            scores.append((game, 0.0, 1.0))
-        else:
-            scores.append((game, None, None))
-
+    selected_players = [player_id for _, _, player_id in assignments if player_id is not None]
     if len(selected_players) != len(set(selected_players)):
         raise PairingError("A player can only be assigned to one board in this match.")
 
@@ -531,16 +711,12 @@ def save_match_lineup(match):
     if players_in_other_matches.intersection(selected_players):
         raise PairingError("A player can only be assigned to one match in a round.")
 
-    roster_players = {
-        side: {entry.player_id: entry.player for entry in team.roster}
-        for side, team in (("home", match.home_team), ("away", match.away_team))
-    }
     for _, side, player_id in assignments:
         if player_id is None:
             continue
         player = roster_players[side][player_id]
         core_team = player.core_team
-        team = match.home_team if side == "home" else match.away_team
+        team = teams[side]
         if (
             core_team
             and core_team.id != team.id
@@ -592,6 +768,12 @@ def round_page(tournament_id, number):
                 db.session.commit()
                 warnings = []
                 flash(f"Table {match.table_number} lineup saved.")
+            elif action == "add_match":
+                home_id = to_team_id(request.form.get("home_team"))
+                away_id = to_team_id(request.form.get("away_team"))
+                table, warnings = add_match(t, number, home_id, away_id)
+                db.session.commit()
+                flash(f"Added table {table}. Any byes those teams had in round {number} were removed.")
             elif action == "clear":
                 rd = get_round(t, number)
                 if rd is None:
@@ -675,4 +857,11 @@ def round_page(tournament_id, number):
         },
         matches=matches,
         bye_rows=bye_rows,
+        result_codes=list(RESULTS),
+        pairing_block=previous_round_problem(t, number),
+        unplaced_seeds=[
+            s for s in seeds
+            if not any(s.team.id in (m.home_team_id, m.away_team_id) for m in matches)
+        ],
+        bye_by_team={b.team_id: b.bye_type for b in round_byes(t, number)},
     )

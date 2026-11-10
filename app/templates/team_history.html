@@ -25,7 +25,7 @@
                 <td>{{ game.home_player.name if game.home_player else '-' }}</td>
                 <td>
                   {% if game.home_score is not none %}
-                    {{ '%g'|format(game.home_score) }}-{{ '%g'|format(game.away_score) }}
+                    {{ game.result_code }}
                   {% else %}
                     Not entered
                   {% endif %}

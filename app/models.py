@@ -135,8 +135,18 @@ class Round(db.Model):
     byes = db.relationship("Bye", back_populates="round", cascade="all, delete-orphan")
 
     @property
+    def paired_matches(self):
+        """Tables with at least one team assigned; empty spare tables are ignored."""
+        return [m for m in self.matches if m.home_team_id is not None or m.away_team_id is not None]
+
+    @property
+    def incomplete_tables(self):
+        return sorted(m.table_number for m in self.paired_matches if not m.is_complete)
+
+    @property
     def is_complete(self):
-        return bool(self.matches) and all(m.is_complete for m in self.matches)
+        """Paired, and every table with a team has all its board results."""
+        return bool(self.paired_matches) and not self.incomplete_tables
 
 
 class Match(db.Model):
@@ -233,6 +243,20 @@ class Game(db.Model):
     @property
     def is_forfeit(self):
         return self.home_score is not None and (self.home_player_id is None or self.away_player_id is None)
+
+    @property
+    def result_code(self):
+        """The result as shown on the lineup form, e.g. "1-0", "1F-0F", or None if not entered.
+        A forfeit is stored as a NULL player on the side that didn't show up."""
+        if self.home_score is None:
+            return None
+        if self.home_player_id is None and self.away_player_id is None:
+            return "0F-0F"
+        if self.away_player_id is None:
+            return "1F-0F" if self.home_score == 1 else "0F-0F"
+        if self.home_player_id is None:
+            return "0F-1F" if self.away_score == 1 else "0F-0F"
+        return {1.0: "1-0", 0.5: "0.5-0.5", 0.0: "0-1"}[self.home_score]
 
     @property
     def home_is_white(self):

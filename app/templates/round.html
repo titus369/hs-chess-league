@@ -2,6 +2,7 @@
 {% block content %}
 <p><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">&larr; {{ t.name }}</a></p>
 <h1>Round {{ number }} pairings</h1>
+{% if pairing_block %}<p><b>Pairing locked:</b> {{ pairing_block }}</p>{% endif %}
 
 <h2>Teams for manual pairings</h2>
 <p>Match points are the teams' totals before round {{ number }}.</p>
@@ -31,11 +32,11 @@
 <form method="post">
   <input type="hidden" name="action" value="create">
   <label>Number of tables <input name="num_tables" type="number" min="1" required></label>
-  <button>Create round {{ number }}</button>
+  <button{% if pairing_block %} disabled{% endif %}>Create round {{ number }}</button>
 </form>
 <form method="post">
   <input type="hidden" name="action" value="generate">
-  <button>Generate suggested pairings</button>
+  <button{% if pairing_block %} disabled{% endif %}>Generate suggested pairings</button>
 </form>
 {% set requested_byes = bye_rows|selectattr('source', 'equalto', 'requested')|list %}
 {% if requested_byes %}
@@ -106,18 +107,40 @@
     </tr>
     {% endfor %}
   </table>
-  <button>Save pairings</button>
+  <button{% if pairing_block %} disabled{% endif %}>Save pairings</button>
 </form>
 <form method="post"{% if (matches|selectattr('home_team_id')|list) or (matches|selectattr('away_team_id')|list) %} onsubmit="return confirm('Replace the current team pairings with newly generated suggestions? Byes you entered by hand are kept only if they were requested.');"{% endif %}>
   <input type="hidden" name="action" value="generate">
-  <button type="submit">Generate suggested pairings</button>
+  <button{% if pairing_block %} disabled{% endif %} type="submit">Generate suggested pairings</button>
 </form>
 <form method="post" onsubmit="return confirm('Clear this round’s team pairings, lineups, and results? Requested byes will be kept.');">
   <input type="hidden" name="action" value="clear">
   <button type="submit">Clear this round</button>
 </form>
 
+<h2>Add a match</h2>
+{% if unplaced_seeds|length >= 2 %}
+<p>Pair two teams that aren't at a table yet (for example, two teams with byes). This adds a new table and removes their byes for this round; tables already in progress are not changed.</p>
+<form method="post">
+  <input type="hidden" name="action" value="add_match">
+  {% for side in ('home', 'away') %}
+  <label>{{ side|title }}
+    <select name="{{ side }}_team" required>
+      <option value="">--</option>
+      {% for s in unplaced_seeds %}
+      <option value="{{ s.team.id }}">#{{ s.number }} {{ s.team.name }} (MP: {{ '%g'|format(team_match_points[s.team.id]) }}){% if s.team.id in bye_by_team %} &mdash; {{ bye_by_team[s.team.id] }}-point bye{% endif %}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% endfor %}
+  <button{% if pairing_block %} disabled{% endif %} type="submit">Add match</button>
+</form>
+{% else %}
+<p>Fewer than two teams are free in this round, so no match can be added.</p>
+{% endif %}
+
 <h2>Player lineups</h2>
+<p>Results are home&ndash;away. F marks a forfeit: 1F-0F means the away player didn't show, 0F-1F the home player didn't, 0F-0F neither. A player box can be left empty (--) for a side that forfeits or until the lineup is known.</p>
 {% for m in matches %}
 <h3>Table {{ m.table_number }}{% if m.home_team and m.away_team %}: {{ m.home_team.name }} vs {{ m.away_team.name }}{% endif %}</h3>
 {% if m.home_team and m.away_team %}
@@ -130,7 +153,7 @@
     <tr>
       <td>{{ g.board }}</td>
       <td>
-        <select name="home_player_{{ g.id }}" required>
+        <select name="home_player_{{ g.id }}">
           <option value="">--</option>
           {% for entry in roster_players[m.home_team_id] %}
           <option value="{{ entry.player_id }}" {% if g.home_player_id == entry.player_id %}selected{% endif %}>
@@ -141,14 +164,14 @@
       </td>
       <td>
         <select name="result_{{ g.id }}">
-          <option value="" {% if g.home_score is none %}selected{% endif %}>Not entered</option>
-          <option value="home" {% if g.home_score == 1 %}selected{% endif %}>{{ m.home_team.name }} wins</option>
-          <option value="draw" {% if g.home_score == 0.5 %}selected{% endif %}>Draw</option>
-          <option value="away" {% if g.home_score == 0 %}selected{% endif %}>{{ m.away_team.name }} wins</option>
+          <option value="" {% if g.result_code is none %}selected{% endif %}>--</option>
+          {% for code in result_codes %}
+          <option value="{{ code }}" {% if g.result_code == code %}selected{% endif %}>{{ code }}</option>
+          {% endfor %}
         </select>
       </td>
       <td>
-        <select name="away_player_{{ g.id }}" required>
+        <select name="away_player_{{ g.id }}">
           <option value="">--</option>
           {% for entry in roster_players[m.away_team_id] %}
           <option value="{{ entry.player_id }}" {% if g.away_player_id == entry.player_id %}selected{% endif %}>

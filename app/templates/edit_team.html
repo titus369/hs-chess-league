@@ -33,10 +33,14 @@
       <input name="{{ key }}_rating"
              value="{{ entry.player.rating or '' }}">
     </label>
+    {% if game_counts.get(entry.player_id) %}
+    <span>Played {{ game_counts[entry.player_id] }} game{{ 's' if game_counts[entry.player_id] != 1 }} for this team; can't be removed</span>
+    {% else %}
     <label>
       Remove from team
       <input type="checkbox" name="{{ key }}_remove" value="1">
     </label>
+    {% endif %}
   </fieldset>
   {% endfor %}
 
