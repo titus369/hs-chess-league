@@ -20,6 +20,15 @@
 </table>
 
 <h2>Add team</h2>
+{% if join_round > t.num_rounds %}
+<p>Every round has been paired, so no more teams can join.</p>
+{% else %}
+{% if late_byes %}
+<p><b>Late entry:</b> a team added now joins in round {{ join_round }}.
+  {% if join_round == 2 %}Round 1 is{% else %}Rounds 1&ndash;{{ join_round - 1 }} are{% endif %} recorded as late-join byes:
+  {% for n, bye_type in late_byes %}round {{ n }} {{ bye_type }}-point{{ ", " if not loop.last else "." }}{% endfor %}
+  Late-join half-point byes count toward the {{ max_half_byes }} half-point bye limit.</p>
+{% endif %}
 <form method="post" action="{{ url_for('main.add_team', tournament_id=t.id) }}">
     <label>School <input name="school" list="schools" required></label>
     <datalist id="schools">{% for s in schools %}<option value="{{ s.name }}">{% endfor %}</datalist>
@@ -49,8 +58,12 @@
     </fieldset>
     <fieldset>
         <legend>Requested byes</legend>
-        <p>Request up to 3 half-point byes across the tournament, or choose zero-point byes.</p>
-        {% for round_number in range(1, t.num_rounds + 1) %}
+        {% if half_byes_left > 0 %}
+        <p>Request up to {{ half_byes_left }} half-point bye{{ 's' if half_byes_left != 1 }}{% if late_byes %} (after late-join byes){% endif %}, or choose zero-point byes.</p>
+        {% else %}
+        <p>This team has used its half-point byes as late-join byes; only zero-point byes can be requested.</p>
+        {% endif %}
+        {% for round_number in range(join_round, t.num_rounds + 1) %}
         <label>
             Round {{ round_number }}
             <select name="bye_round_{{ round_number }}">
@@ -63,10 +76,11 @@
     </fieldset>
     <button>Add team</button>
 </form>
+{% endif %}
 
 <p>{% for n in range(1, t.num_rounds + 1) %}<a href="{{ url_for('main.round_page', tournament_id=t.id, number=n) }}">Round {{ n }}</a> {% endfor %}</p>
 <script>
-  document.getElementById("core-paste-fill").addEventListener("click", () => {
+  document.getElementById("core-paste-fill")?.addEventListener("click", () => {
     const header = /^(board|name|username|lichess( username)?|rating)$/i;
     const rows = document.getElementById("core-paste").value.split(/\r?\n/)
       .map((line) => line.split("\t").map((cell) => cell.trim()))

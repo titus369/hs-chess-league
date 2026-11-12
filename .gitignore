@@ -32,4 +32,4 @@ dist/
 .DS_Store
 Thumbs.db
 
-.xlsx
+*.xlsx

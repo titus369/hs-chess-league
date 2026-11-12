@@ -2,12 +2,14 @@
 {% block content %}
 <p><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">&larr; {{ t.name }}</a></p>
 <h1>Round {{ number }} pairings</h1>
-{% if pairing_block %}<p><b>Pairing locked:</b> {{ pairing_block }}</p>{% endif %}
+{% set locked = lock_problem is not none %}
+{% if locked %}<p><b>Round locked:</b> {{ lock_problem }}</p>
+{% elif pairing_block %}<p><b>Pairing locked:</b> {{ pairing_block }}</p>{% endif %}
 
 <h2>Teams for manual pairings</h2>
 <p>Match points are the teams' totals before round {{ number }}.</p>
 <table border="1" cellpadding="4">
-  <tr><th>Seed</th><th>Team</th><th>Rating</th><th>MP</th><th>Requested bye</th></tr>
+  <tr><th>Seed</th><th>Team</th><th>Rating</th><th>MP</th><th>Preset bye</th></tr>
   {% for s in seeds %}
   <tr>
     <td>{{ s.number }}</td>
@@ -16,7 +18,7 @@
     <td>{{ '%g'|format(team_match_points[s.team.id]) }}</td>
     <td>
       {% if s.team.id in requested_byes_by_team %}
-      {{ requested_byes_by_team[s.team.id] }}-point
+      {{ requested_byes_by_team[s.team.id] }}
       {% else %}
       None
       {% endif %}
@@ -32,18 +34,18 @@
 <form method="post">
   <input type="hidden" name="action" value="create">
   <label>Number of tables <input name="num_tables" type="number" min="1" required></label>
-  <button{% if pairing_block %} disabled{% endif %}>Create round {{ number }}</button>
+  <button{% if pairing_block or locked %} disabled{% endif %}>Create round {{ number }}</button>
 </form>
 <form method="post">
   <input type="hidden" name="action" value="generate">
-  <button{% if pairing_block %} disabled{% endif %}>Generate suggested pairings</button>
+  <button{% if pairing_block or locked %} disabled{% endif %}>Generate suggested pairings</button>
 </form>
-{% set requested_byes = bye_rows|selectattr('source', 'equalto', 'requested')|list %}
+{% set requested_byes = bye_rows|selectattr('source', 'in', ['requested', 'late_join'])|list %}
 {% if requested_byes %}
-<h2>Requested byes for round {{ number }}</h2>
+<h2>Preset byes for round {{ number }}</h2>
 <ul>
   {% for bye in requested_byes %}
-  <li>{{ bye.team.name }}: {{ bye.bye_type }}-point bye</li>
+  <li>{{ bye.team.name }}: {{ bye.bye_type }}-point bye{% if bye.source == 'late_join' %} (late join){% endif %}</li>
   {% endfor %}
 </ul>
 {% endif %}
@@ -52,7 +54,7 @@
 <form method="post">
   <input type="hidden" name="action" value="resize">
   <label>Number of tables <input name="num_tables" type="number" min="1" value="{{ matches|length }}" required></label>
-  <button>Update table count</button>
+  <button{% if locked %} disabled{% endif %}>Update table count</button>
 </form>
 <form method="post">
   <input type="hidden" name="action" value="save">
@@ -107,15 +109,15 @@
     </tr>
     {% endfor %}
   </table>
-  <button{% if pairing_block %} disabled{% endif %}>Save pairings</button>
+  <button{% if pairing_block or locked %} disabled{% endif %}>Save pairings</button>
 </form>
 <form method="post"{% if (matches|selectattr('home_team_id')|list) or (matches|selectattr('away_team_id')|list) %} onsubmit="return confirm('Replace the current team pairings with newly generated suggestions? Byes you entered by hand are kept only if they were requested.');"{% endif %}>
   <input type="hidden" name="action" value="generate">
-  <button{% if pairing_block %} disabled{% endif %} type="submit">Generate suggested pairings</button>
+  <button{% if pairing_block or locked %} disabled{% endif %} type="submit">Generate suggested pairings</button>
 </form>
-<form method="post" onsubmit="return confirm('Clear this round’s team pairings, lineups, and results? Requested byes will be kept.');">
+<form method="post" onsubmit="return confirm('Clear this round’s team pairings, lineups, and results? Requested and late-join byes will be kept.');">
   <input type="hidden" name="action" value="clear">
-  <button type="submit">Clear this round</button>
+  <button type="submit"{% if locked %} disabled{% endif %}>Clear this round</button>
 </form>
 
 <h2>Add a match</h2>
@@ -133,7 +135,7 @@
     </select>
   </label>
   {% endfor %}
-  <button{% if pairing_block %} disabled{% endif %} type="submit">Add match</button>
+  <button{% if pairing_block or locked %} disabled{% endif %} type="submit">Add match</button>
 </form>
 {% else %}
 <p>Fewer than two teams are free in this round, so no match can be added.</p>
@@ -165,7 +167,7 @@
   <input type="hidden" name="match_id" value="{{ m.id }}">
   <p>
     <textarea class="paste-box" rows="4" cols="90" placeholder="Paste table {{ m.table_number }}'s rows from Google Sheets here"></textarea><br>
-    <button type="button" class="paste-fill">Fill table</button>
+    <button type="button" class="paste-fill"{% if locked %} disabled{% endif %}>Fill table</button>
     <span class="paste-status"></span>
   </p>
   <table border="1" cellpadding="4">
@@ -186,7 +188,7 @@
     </tr>
     {% endfor %}
   </table>
-  <button>Save table {{ m.table_number }} lineup</button>
+  <button{% if locked %} disabled{% endif %}>Save table {{ m.table_number }} lineup</button>
 </form>
 {% else %}
 <p>Assign both teams above before entering this table's lineup.</p>

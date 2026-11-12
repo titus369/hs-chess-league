@@ -5,7 +5,25 @@ from . import db
 from .models import BOARDS, MAX_HALF_BYES, Bye, Game, Match, Player, RosterEntry, Round, School, Team, Tournament
 from .rosters import roster_report, seeded_teams
 from .standings import board_standings, team_standings
-from .pairings import PairingError, add_match, apply_generated_pairings, previous_round_problem, clear_round, create_round, get_round, resize_round, round_byes, round_pairings, set_round_pairings
+from .pairings import (
+    PRESET_BYE_SOURCES,
+    PairingError,
+    add_match,
+    apply_generated_pairings,
+    clear_round,
+    create_round,
+    first_unpaired_round,
+    get_round,
+    late_join_bye_plan,
+    previous_round_problem,
+    require_round_unlocked,
+    resize_round,
+    round_byes,
+    round_has_pairings,
+    round_lock_problem,
+    round_pairings,
+    set_round_pairings,
+)
 bp = Blueprint("main", __name__)
 
 
@@ -19,27 +37,6 @@ def get_or_create_school(name):
         db.session.add(school)
         db.session.flush()
     return school
-
-
-def round_has_pairings(rd):
-    return bool(
-        rd
-        and (
-            any(
-                match.home_team_id is not None
-                or match.away_team_id is not None
-                or any(
-                    game.home_player_id is not None
-                    or game.away_player_id is not None
-                    or game.home_score is not None
-                    or game.away_score is not None
-                    for game in match.games
-                )
-                for match in rd.matches
-            )
-            or any(bye.source != "requested" for bye in rd.byes)
-        )
-    )
 
 
 def current_round_number(t):
@@ -95,11 +92,18 @@ def tournament_new():
 @bp.get("/tournaments/<int:tournament_id>")
 def tournament(tournament_id):
     t = db.get_or_404(Tournament, tournament_id)
+    join_round = first_unpaired_round(t)
+    late_byes = late_join_bye_plan(join_round)
     return render_template(
         "tournament.html",
         t = t,
-        standings = team_standings(t), 
-        schools = School.query.order_by(School.name).all(), )
+        standings = team_standings(t),
+        schools = School.query.order_by(School.name).all(),
+        join_round = join_round,
+        late_byes = late_byes,
+        max_half_byes = MAX_HALF_BYES,
+        half_byes_left = MAX_HALF_BYES - sum(1 for _, bye_type in late_byes if bye_type == "half"),
+    )
 
 @bp.get("/tournaments/<int:tournament_id>/teams/<int:team_id>/roster")
 def team_roster(tournament_id, team_id):
@@ -118,15 +122,18 @@ def team_roster(tournament_id, team_id):
             (bye for bye in rd.byes if bye.team_id == team.id),
             None,
         ) if rd else None
+        late_join = bye is not None and bye.source == "late_join"
         bye_rounds.append({
             "number": number,
             "bye_type": bye.bye_type if bye else "",
-            "editable": not round_has_pairings(rd),
-            "removable": bye is not None and number >= current,
+            "late_join": late_join,
+            "editable": not late_join and not round_has_pairings(rd),
+            "removable": bye is not None and not late_join and number >= current,
         })
     return render_template(
         "team_roster.html",
         t=t,
+        team=team,
         roster=roster,
         bye_rounds=bye_rounds,
         game_counts=team_game_counts(team),
@@ -176,6 +183,14 @@ def update_team_bye(tournament_id, team_id):
         None,
     ) if rd else None
 
+    lock = round_lock_problem(t, number)
+    if lock:
+        flash(lock)
+        return redirect(url_for("main.team_roster", tournament_id=t.id, team_id=team.id))
+    if bye is not None and bye.source == "late_join":
+        flash(f"{team.name} joined late; its round {number} bye is fixed and can't be changed here.")
+        return redirect(url_for("main.team_roster", tournament_id=t.id, team_id=team.id))
+
     if not bye_type:
         if bye is None:
             flash(f"{team.name} has no bye in round {number}.")
@@ -218,7 +233,7 @@ def update_team_bye(tournament_id, team_id):
                 Round.number != number,
                 Bye.team_id == team.id,
                 Bye.bye_type == "half",
-                Bye.source.in_(("requested", "late_join")),
+                Bye.source.in_(PRESET_BYE_SOURCES),
             )
             .count()
         )
@@ -322,9 +337,17 @@ def add_team(tournament_id):
         flash("Enter a school name.")
         return back
 
+    # A team added after pairing has started joins at the first unpaired round
+    # and gets byes for the rounds it missed (half-point up to the cap, then zero).
+    join_round = first_unpaired_round(t)
+    if join_round > t.num_rounds:
+        flash("Every round has already been paired, so a new team can't join this tournament.")
+        return back
+    late_byes = late_join_bye_plan(join_round)
+    half_bye_count = sum(1 for _, bye_type in late_byes if bye_type == "half")
+
     bye_requests = []
-    half_bye_count = 0
-    for round_number in range(1, t.num_rounds + 1):
+    for round_number in range(join_round, t.num_rounds + 1):
         bye_type = request.form.get(f"bye_round_{round_number}", "")
         if bye_type not in ("", "half", "zero"):
             flash(f"Invalid bye request for round {round_number}.")
@@ -334,7 +357,13 @@ def add_team(tournament_id):
         if bye_type == "half":
             half_bye_count += 1
     if half_bye_count > MAX_HALF_BYES:
-        flash(f"A team may request at most {MAX_HALF_BYES} half-point byes.")
+        late_half = sum(1 for _, bye_type in late_byes if bye_type == "half")
+        if late_half:
+            flash(f"This team joins in round {join_round} and already gets {late_half} late-join "
+                  f"half-point bye{'s' if late_half != 1 else ''}, so it can request at most "
+                  f"{MAX_HALF_BYES - late_half} more.")
+        else:
+            flash(f"A team may request at most {MAX_HALF_BYES} half-point byes.")
         return back
 
     if not (len(names) == BOARDS
@@ -357,7 +386,7 @@ def add_team(tournament_id):
     try:
         school = get_or_create_school(school)
         existing = [x.team_number for x in t.teams if x.school_id == school.id]
-        team = Team(tournament = t, school = school, team_number=max(existing, default=0) + 1)
+        team = Team(tournament = t, school = school, team_number=max(existing, default=0) + 1, joined_round=join_round)
         db.session.add(team)
         db.session.flush()
 
@@ -377,7 +406,11 @@ def add_team(tournament_id):
             )
             db.session.add_all([player, entry])
 
-        for round_number, bye_type in bye_requests:
+        all_byes = (
+            [(n, bye_type, "late_join") for n, bye_type in late_byes]
+            + [(n, bye_type, "requested") for n, bye_type in bye_requests]
+        )
+        for round_number, bye_type, source in all_byes:
             rd = Round.query.filter_by(
                 tournament_id=t.id,
                 number=round_number,
@@ -390,14 +423,23 @@ def add_team(tournament_id):
                 round=rd,
                 team=team,
                 bye_type=bye_type,
-                source="requested",
+                source=source,
             ))
         db.session.commit()
     except Exception:
         db.session.rollback()
         raise
 
-    flash(f" Added {team.name} with {BOARDS} core players.")
+    flash(f"Added {team.name} with {BOARDS} core players.")
+    if late_byes:
+        half = sum(1 for _, bye_type in late_byes if bye_type == "half")
+        zero = len(late_byes) - half
+        parts = [f"{half} half-point"] if half else []
+        if zero:
+            parts.append(f"{zero} zero-point")
+        missed = "round 1 was" if join_round == 2 else f"rounds 1 to {join_round - 1} were"
+        flash(f"{team.name} joins in round {join_round}; {missed} recorded as late-join "
+              f"byes ({' and '.join(parts)}).")
     return back
 
 @bp.route(
@@ -505,12 +547,9 @@ def edit_team(tournament_id, team_id):
                 player = entry.player if entry else selected_player
                 current_core_team = player.core_team
                 if current_core_team and current_core_team.id != team.id:
-                    if (
-                        target_school
-                        and current_core_team.school_id == target_school.id
-                        and current_core_team.team_number < team.team_number
-                    ):
-                        flash(f"{current_core_team.name}'s core player cannot join the lower team {team.name}.")
+                    blocking = target_school and player.blocking_core_team(team, school_id=target_school.id)
+                    if blocking:
+                        flash(f"{blocking.name}'s core player cannot join the lower team {team.name}.")
                         return return_to_edit()
                     if is_core:
                         flash("A player already core on another team can only be added as a substitute.")
@@ -614,11 +653,7 @@ def edit_team(tournament_id, team_id):
         school_players=[
             player for player in school_players
             if player.id not in current_player_ids
-            and not (
-                player.core_team
-                and player.core_team.school_id == team.school_id
-                and player.core_team.team_number < team.team_number
-            )
+            and player.blocking_core_team(team) is None
         ],
     )
 
@@ -680,8 +715,8 @@ def add_pasted_substitute(team, game, side):
             )
         if any(entry.team_id == team.id for entry in player.roster_entries):
             return player.id
-        core_team = player.core_team
-        if core_team and core_team.school_id == team.school_id and core_team.team_number < team.team_number:
+        core_team = player.blocking_core_team(team)
+        if core_team:
             raise PairingError(
                 f"{where}: {player.name} is core on {core_team.name} and can't join the lower team {team.name}."
             )
@@ -767,15 +802,9 @@ def save_match_lineup(match):
     for _, side, player_id in assignments:
         if player_id is None:
             continue
-        player = roster_players[side][player_id]
-        core_team = player.core_team
         team = teams[side]
-        if (
-            core_team
-            and core_team.id != team.id
-            and core_team.school_id == team.school_id
-            and core_team.team_number < team.team_number
-        ):
+        core_team = roster_players[side][player_id].blocking_core_team(team)
+        if core_team:
             raise PairingError(
                 f"{core_team.name}'s core player cannot play for the lower team {team.name}."
             )
@@ -810,6 +839,7 @@ def round_page(tournament_id, number):
                 rd = get_round(t, number)
                 if rd is None:
                     raise PairingError(f"Round {number} hasn't been created yet.")
+                require_round_unlocked(t, number)
                 match_id = to_team_id(request.form.get("match_id"))
                 match = next(
                     (match for match in rd.matches if match.id == match_id),
@@ -828,13 +858,10 @@ def round_page(tournament_id, number):
                 db.session.commit()
                 flash(f"Added table {table}. Any byes those teams had in round {number} were removed.")
             elif action == "clear":
-                rd = get_round(t, number)
-                if rd is None:
-                    raise PairingError(f"Round {number} hasn't been created yet.")
-                clear_round(rd)
+                clear_round(t, number)
                 db.session.commit()
                 warnings = []
-                flash(f"Round {number} pairings, lineups, and results cleared. Requested byes were kept.")
+                flash(f"Round {number} pairings, lineups, and results cleared. Requested and late-join byes were kept.")
             elif action == "generate":
                 notes, warnings = apply_generated_pairings(t, number)
                 db.session.commit()
@@ -881,9 +908,9 @@ def round_page(tournament_id, number):
         for row in team_standings(t, before_round=number)
     }
     requested_byes_by_team = {
-        bye.team_id: bye.bye_type
+        bye.team_id: f"{bye.bye_type}-point" + (" (late join)" if bye.source == "late_join" else "")
         for bye in round_byes(t, number)
-        if bye.source == "requested"
+        if bye.source in PRESET_BYE_SOURCES
     }
     bye_rows = [
         {
@@ -911,6 +938,7 @@ def round_page(tournament_id, number):
         matches=matches,
         bye_rows=bye_rows,
         result_codes=list(RESULTS),
+        lock_problem=round_lock_problem(t, number),
         pairing_block=previous_round_problem(t, number),
         unplaced_seeds=[
             s for s in seeds

@@ -70,6 +70,23 @@ class Player(db.Model):
     def is_core(self):
         return self.core_team is not None
 
+    def blocking_core_team(self, team, school_id=None):
+        """The higher team of the same school this player is core on, which stops
+        them playing for (or joining) the lower `team`; None if they're eligible.
+
+        `school_id` overrides team.school_id, for checking a team whose school is
+        being changed."""
+        school_id = team.school_id if school_id is None else school_id
+        core = self.core_team
+        if (
+            core is not None
+            and core.id != team.id
+            and core.school_id == school_id
+            and core.team_number < team.team_number
+        ):
+            return core
+        return None
+
 class RosterEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     team_id=db.Column(db.Integer, db.ForeignKey("team.id"), nullable=False)
