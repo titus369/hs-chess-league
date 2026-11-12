@@ -1,57 +1,57 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>{{ roster.team_name }} roster</title>
-</head>
-<body>
-  {% for message in get_flashed_messages() %}<p><b>{{ message }}</b></p>{% endfor %}
-  <h1>{{ roster.team_name }} roster</h1>
-  <p><a href="{{ url_for('main.team_history', tournament_id=t.id, team_id=roster.team_id) }}">Round-by-round history</a></p>
-  <p><a href="{{ url_for('main.edit_team', tournament_id=t.id, team_id=roster.team_id) }}">Edit team and roster</a></p>
-  <h2>Round bye requests</h2>
-  <p>Request a half-point or zero-point bye for a round before its team pairings are assigned. Up to three half-point byes are allowed per team. Any bye in the current or a future round can be removed; byes in completed rounds are changed on that round's page.</p>
-  {% for round in bye_rounds %}
-  <form method="post" action="{{ url_for('main.update_team_bye', tournament_id=t.id, team_id=roster.team_id) }}">
-    <input type="hidden" name="round_number" value="{{ round.number }}">
-    <label>
-      Round {{ round.number }}
-      {% if round.editable %}
-      <select name="bye_type">
-        <option value="" {% if not round.bye_type %}selected{% endif %}>No bye requested</option>
-        <option value="half" {% if round.bye_type == 'half' %}selected{% endif %}>Half-point bye</option>
-        <option value="zero" {% if round.bye_type == 'zero' %}selected{% endif %}>Zero-point bye</option>
-      </select>
-      <button type="submit">Save</button>
-      {% else %}
-      Pairings assigned{% if round.bye_type %}; {{ round.bye_type }}-point bye{% endif %}
-      {% if round.removable %}
-      <input type="hidden" name="bye_type" value="">
-      <button type="submit">Remove bye</button>
-      {% endif %}
-      {% endif %}
-    </label>
-  </form>
-  {% endfor %}
-  <ol>
-    {% for player in roster.players %}
-    <li>
-      {{ player.name }} ({{ 'Core' if player.is_core else 'Substitute' }})
-      &mdash; Rating: {{ player.rating if player.rating is not none else 'Unrated' }}
-      &mdash; Lichess: {{ player.lichess_username }}
-      {% set played = game_counts.get(player.player_id, 0) %}
-      &mdash; Games for this team: {{ played }}
-      {% if not played %}
-      <form method="post" style="display:inline"
-            action="{{ url_for('main.remove_roster_player', tournament_id=t.id, team_id=roster.team_id, player_id=player.player_id) }}"
-            onsubmit='return confirm({{ ("Remove " ~ player.name ~ " from " ~ roster.team_name ~ "?")|tojson }});'>
-        <button type="submit">Remove from roster</button>
-      </form>
-      {% endif %}
-    </li>
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">&larr; {{ t.name }}</a></p>
+<h1>{{ roster.team_name }} roster</h1>
+{% if team.joined_round > 1 %}
+<p>Joined late, in round {{ team.joined_round }}.</p>
+{% endif %}
+<p><a href="{{ url_for('main.team_history', tournament_id=t.id, team_id=roster.team_id) }}">Round-by-round history</a></p>
+<p><a href="{{ url_for('main.edit_team', tournament_id=t.id, team_id=roster.team_id) }}">Edit team and roster</a></p>
+<h2>Round bye requests</h2>
+<p>Request a half-point or zero-point bye for a round before its team pairings are assigned. Up to three half-point byes are allowed per team, including any late-join byes. Any bye in the current or a future round can be removed; byes in completed rounds are changed on that round's page.</p>
+{% for round in bye_rounds %}
+<form method="post" action="{{ url_for('main.update_team_bye', tournament_id=t.id, team_id=roster.team_id) }}">
+  <input type="hidden" name="round_number" value="{{ round.number }}">
+  <label>
+    Round {{ round.number }}
+    {% if round.late_join %}
+    {{ round.bye_type|capitalize }}-point bye (late join)
+    {% elif round.editable %}
+    <select name="bye_type">
+      <option value="" {% if not round.bye_type %}selected{% endif %}>No bye requested</option>
+      <option value="half" {% if round.bye_type == 'half' %}selected{% endif %}>Half-point bye</option>
+      <option value="zero" {% if round.bye_type == 'zero' %}selected{% endif %}>Zero-point bye</option>
+    </select>
+    <button type="submit">Save</button>
     {% else %}
-    <li>No roster members.</li>
-    {% endfor %}
-  </ol>
-</body>
-</html>
+    Pairings assigned{% if round.bye_type %}; {{ round.bye_type }}-point bye{% endif %}
+    {% if round.removable %}
+    <input type="hidden" name="bye_type" value="">
+    <button type="submit">Remove bye</button>
+    {% endif %}
+    {% endif %}
+  </label>
+</form>
+{% endfor %}
+<h2>Players</h2>
+<ol>
+  {% for player in roster.players %}
+  <li>
+    {{ player.name }} ({{ 'Core' if player.is_core else 'Substitute' }})
+    &mdash; Rating: {{ player.rating if player.rating is not none else 'Unrated' }}
+    &mdash; Lichess: {{ player.lichess_username }}
+    {% set played = game_counts.get(player.player_id, 0) %}
+    &mdash; Games for this team: {{ played }}
+    {% if not played %}
+    <form method="post" style="display:inline"
+          action="{{ url_for('main.remove_roster_player', tournament_id=t.id, team_id=roster.team_id, player_id=player.player_id) }}"
+          onsubmit='return confirm({{ ("Remove " ~ player.name ~ " from " ~ roster.team_name ~ "?")|tojson }});'>
+      <button type="submit">Remove from roster</button>
+    </form>
+    {% endif %}
+  </li>
+  {% else %}
+  <li>No roster members.</li>
+  {% endfor %}
+</ol>
+{% endblock %}

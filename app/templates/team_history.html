@@ -40,7 +40,7 @@
         {% endif %}
       {% elif row.bye %}
         {{ row.bye.bye_type|capitalize }}-point bye
-        {% if row.bye.source == 'requested' %}(requested){% endif %}
+        {% if row.bye.source == 'requested' %}(requested){% elif row.bye.source == 'late_join' %}(late join){% endif %}
       {% else %}
         No pairing recorded
       {% endif %}

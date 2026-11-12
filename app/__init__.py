@@ -73,13 +73,17 @@ def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-def create_app():
+def create_app(test_config=None):
+    """Build the app. `test_config` overrides settings (the tests use it for an
+    in-memory database), applied before the database is set up."""
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
     app = Flask(__name__, instance_relative_config=True)
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///league.db"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
+    if test_config:
+        app.config.update(test_config)
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("SECRET_KEY must be set in the environment or .env file")
 

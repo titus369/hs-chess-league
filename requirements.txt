@@ -1,4 +1,14 @@
+# Web app
 Flask>=3.0
 Flask-SQLAlchemy>=3.1
 python-dotenv>=1.0
 networkx>=3.0
+
+# scripts/individual_grand_prix.py
+requests>=2.31
+pandas>=2.0
+openpyxl>=3.1
+chess>=1.10
+
+# Tests (run with: python -m pytest)
+pytest>=8
