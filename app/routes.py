@@ -4,7 +4,7 @@ from sqlalchemy import func, or_
 from . import db
 from .models import BOARDS, MAX_HALF_BYES, Bye, Game, Match, Player, RosterEntry, Round, School, Team, Tournament
 from .rosters import roster_report, seeded_teams
-from .standings import board_standings, team_standings
+from .standings import board_standings, team_standings, wallchart
 from .pairings import (
     PRESET_BYE_SOURCES,
     PairingError,
@@ -97,7 +97,7 @@ def tournament(tournament_id):
     return render_template(
         "tournament.html",
         t = t,
-        standings = team_standings(t),
+        standings = wallchart(t),
         schools = School.query.order_by(School.name).all(),
         join_round = join_round,
         late_byes = late_byes,
@@ -907,11 +907,6 @@ def round_page(tournament_id, number):
         row["team"].id: row["mp"]
         for row in team_standings(t, before_round=number)
     }
-    requested_byes_by_team = {
-        bye.team_id: f"{bye.bye_type}-point" + (" (late join)" if bye.source == "late_join" else "")
-        for bye in round_byes(t, number)
-        if bye.source in PRESET_BYE_SOURCES
-    }
     bye_rows = [
         {
             "team_id": b.team_id,
@@ -930,7 +925,6 @@ def round_page(tournament_id, number):
         number=number,
         seeds=seeds,
         team_match_points=team_match_points,
-        requested_byes_by_team=requested_byes_by_team,
         roster_players={
             seed.team.id: seed.team.roster
             for seed in seeds

@@ -6,29 +6,6 @@
 {% if locked %}<p><b>Round locked:</b> {{ lock_problem }}</p>
 {% elif pairing_block %}<p><b>Pairing locked:</b> {{ pairing_block }}</p>{% endif %}
 
-<h2>Teams for manual pairings</h2>
-<p>Match points are the teams' totals before round {{ number }}.</p>
-<table border="1" cellpadding="4">
-  <tr><th>Seed</th><th>Team</th><th>Rating</th><th>MP</th><th>Preset bye</th></tr>
-  {% for s in seeds %}
-  <tr>
-    <td>{{ s.number }}</td>
-    <td>{{ s.team.name }}</td>
-    <td>{{ '%.1f'|format(s.avg_rating) }}</td>
-    <td>{{ '%g'|format(team_match_points[s.team.id]) }}</td>
-    <td>
-      {% if s.team.id in requested_byes_by_team %}
-      {{ requested_byes_by_team[s.team.id] }}
-      {% else %}
-      None
-      {% endif %}
-    </td>
-  </tr>
-  {% else %}
-  <tr><td colspan="5">No teams have been added.</td></tr>
-  {% endfor %}
-</table>
-
 {% if not matches %}
 <p>This round hasn't been set up yet. Creating it adds match shells with 4 empty boards. Assign teams and then choose each team's players from its roster.</p>
 <form method="post">

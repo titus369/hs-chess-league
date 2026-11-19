@@ -96,6 +96,22 @@ class TestTournamentPage:
             assert f"/teams/{team.id}/history" in page
 
 
+class TestWallchartPage:
+    def test_standings_page_shows_the_wallchart(self, league, season):
+        page = page_text(league.get(f"/tournaments/{season.id}"))
+        assert all(f"<th>R{n}</th>" in page for n in range(1, season.num_rounds + 1))
+        assert "<b>W</b> 2.5-1.5" in page and "<b>L</b> 1.5-2.5" in page
+        assert "H vs #" in page and "A vs #" in page
+        assert "not played" in page          # round 2 is only partly entered
+        assert "Full bye (+1)" in page       # the odd team out in round 1
+        assert "Half bye (+0.5)" in page     # Alpha's requested bye in round 4
+
+    def test_round_page_has_no_standings_table(self, league, season):
+        page = page_text(league.get(f"/tournaments/{season.id}/rounds/2"))
+        assert "Teams for manual pairings" not in page
+        assert "(MP: " in page               # the team pickers still show match points
+
+
 class TestTeamPages:
     def test_roster_page_links_to_history_and_edit(self, league, season):
         team = league.team_named(season, "Bravo A")

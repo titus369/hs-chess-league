@@ -408,10 +408,11 @@ def suggest_round_pairings(tournament, number):
             id=t.id, name=t.name, tpn=seed.number, school_id=t.school_id,
             mp=mp.get(t.id, 0.0), sides=sides.get(t.id, []),
             had_full_bye=t.id in full_bye_teams, undefeated=t.id not in defeated,
+            rating=seed.avg_rating or 0.0,
         ))
     if len(entrants) < 2 and not entrants:
         raise PairingError("There are no teams available to pair.")
-    suggestion = suggest_pairings(entrants, played)
+    suggestion = suggest_pairings(entrants, played, rounds_played=number - 1)
     notes = sorted(set(notes)) + suggestion.notes
     return suggestion, fixed_byes, notes
  

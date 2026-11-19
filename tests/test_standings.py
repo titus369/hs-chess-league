@@ -1,7 +1,7 @@
 """Team standings and individual board standings."""
 import pytest
 
-from app.standings import board_standings, team_standings
+from app.standings import board_standings, team_standings, wallchart
 
 WIN_3_1 = ["1-0", "1-0", "1-0", "0-1"]
 DRAW = ["1-0", "1-0", "0-1", "0-1"]
@@ -199,3 +199,57 @@ class TestBoardStandings:
         league.set_results(m, ["1-0"] * 4)
         other = league.tournament("Other")
         assert board_standings(other) == {1: [], 2: [], 3: [], 4: []}
+
+
+class TestWallchart:
+    """Standings plus every team's opponent, side and result in each round."""
+
+    @pytest.fixture
+    def chart(self, league, four):
+        t, (a, b, c, d) = four
+        league.pair(t, 1, [(a, c), (b, d)])
+        rd1 = league.round(t, 1)
+        league.set_results(league.match_of(t, 1, a), WIN_3_1)
+        league.set_results(league.match_of(t, 1, b), DRAW)
+        league.pair(t, 2, [(b, a)], byes=[(c, "full"), (d, "zero")])
+        assert rd1.is_complete
+        return {row["team"].name: row for row in wallchart(t)}, t
+
+    def test_rows_follow_the_standings_with_line_numbers(self, chart, four):
+        rows_by_name, t = chart
+        assert [r["team"].name for r in wallchart(t)] == [r["team"].name for r in team_standings(t)]
+        assert [r["line"] for r in wallchart(t)] == [1, 2, 3, 4]
+
+    def test_one_cell_per_round_of_the_tournament(self, chart):
+        rows_by_name, t = chart
+        assert all(len(r["rounds"]) == t.num_rounds for r in rows_by_name.values())
+        assert all(cell is None for r in rows_by_name.values() for cell in r["rounds"][2:])
+
+    def test_completed_match_shows_opponent_side_and_result(self, chart):
+        rows_by_name, _ = chart
+        alpha, charlie = rows_by_name["Alpha A"], rows_by_name["Charlie A"]
+        cell = alpha["rounds"][0]
+        assert (cell["kind"], cell["side"], cell["result"], cell["score"]) == ("match", "H", "W", "3-1")
+        assert cell["opponent"].name == "Charlie A" and cell["line"] == charlie["line"]
+        back = charlie["rounds"][0]
+        assert (back["side"], back["result"], back["score"], back["line"]) == ("A", "L", "1-3", alpha["line"])
+
+    def test_draw(self, chart):
+        rows_by_name, _ = chart
+        cell = rows_by_name["Delta A"]["rounds"][0]
+        assert (cell["side"], cell["result"], cell["score"]) == ("A", "D", "2-2")
+
+    def test_unplayed_match_shows_the_pairing_without_a_result(self, chart):
+        rows_by_name, _ = chart
+        cell = rows_by_name["Alpha A"]["rounds"][1]
+        assert (cell["side"], cell["opponent"].name, cell["result"], cell["score"]) == ("A", "Bravo A", None, None)
+
+    def test_byes(self, chart):
+        rows_by_name, _ = chart
+        assert rows_by_name["Charlie A"]["rounds"][1] == {"kind": "bye", "bye_type": "full", "points": 1.0}
+        assert rows_by_name["Delta A"]["rounds"][1] == {"kind": "bye", "bye_type": "zero", "points": 0.0}
+
+    def test_no_rounds_yet(self, four):
+        t, teams = four
+        chart = wallchart(t)
+        assert len(chart) == 4 and all(r["rounds"] == [None] * t.num_rounds for r in chart)
