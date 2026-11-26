@@ -1,11 +1,10 @@
 import os
+import sqlite3
 from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-
-import sqlite3
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
@@ -90,7 +89,7 @@ def create_app(test_config=None):
     os.makedirs(app.instance_path, exist_ok = True)
     db.init_app(app)
 
-    from . import models
+    from . import models  # noqa: F401  (registers the models with SQLAlchemy)
     from .routes import bp
 
     app.register_blueprint(bp)

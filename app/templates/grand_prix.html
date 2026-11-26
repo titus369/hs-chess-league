@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('main.tournament', tournament_id=t.id) }}">&larr; {{ t.name }}</a></p>
+<h1>Individual grand prix</h1>
+<p>Points from the Lichess arenas held alongside the league. Weekly arenas pay 20-12-8-6-4 to the top 5.
+The kickoff arena pays 30-18-12-9-6-5-4-3-2-1 to the top 10, plus 5-3-2 to every member of the top 3 Lichess teams who played at least one game.
+Everyone who played at least one game in an arena is listed, even with 0 points.
+Ties are broken by total arena points (the points scored inside the Lichess arenas).
+Players are matched to the league by Lichess username.</p>
+
+<h2>Add an arena</h2>
+<p>Adding an arena that's already listed re-imports it and replaces its earlier results.</p>
+<form method="post">
+  <input type="hidden" name="action" value="add">
+  <label>Date <input id="event_date" name="event_date" type="date" value="{{ today.isoformat() }}" required></label>
+  <label>Scoring
+    <select id="kind" name="kind">
+      {% for value, text in kinds.items() %}<option value="{{ value }}">{{ text }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Lichess arena ID <input id="arena_id" name="arena_id" placeholder="yLyBkTk7 or lichess.org link" required></label>
+  <button type="submit">Add arena</button>
+</form>
+
+<h2>Standings</h2>
+{% if rows %}
+<table border="1" cellpadding="4">
+  <tr>
+    <th>#</th><th>Player</th><th>School</th><th>Lichess username</th>
+    {% for e in events %}<th title="{{ e.arena_id }}">{{ e.label }}{% if e.kind == 'kickoff' %} (kickoff){% endif %}</th>{% endfor %}
+    <th>Total</th><th>Arena points (tiebreak)</th>
+  </tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.rank }}</td>
+    <td>{% if r.player %}{{ r.player.name }}{% else %}<i>Not on a roster</i>{% endif %}</td>
+    <td>{{ r.player.school.name if r.player else '' }}</td>
+    <td>{{ r.username }}</td>
+    {% for e in events %}<td{% if e.id in r.points %} title="{{ r.arena_scores[e.id] }} arena points"{% endif %}>{{ r.points.get(e.id, '') }}</td>{% endfor %}
+    <td><b>{{ r.total }}</b></td>
+    <td>{{ r.arena_total }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No grand prix points yet. Add the first arena above.</p>
+{% endif %}
+
+{% if events %}
+<h2>Arenas</h2>
+<table border="1" cellpadding="4">
+  <tr><th>Date</th><th>Scoring</th><th>Lichess arena</th><th>Players</th><th></th></tr>
+  {% for e in events %}
+  <tr>
+    <td>{{ e.event_date.isoformat() }}</td>
+    <td>{{ e.kind|capitalize }}</td>
+    <td><a href="https://lichess.org/tournament/{{ e.arena_id }}">{{ e.arena_id }}</a></td>
+    <td>{{ e.results|length }}</td>
+    <td>
+      <form method="post">
+        <input type="hidden" name="action" value="remove">
+        <input type="hidden" name="event_id" value="{{ e.id }}">
+        <button type="submit">Remove</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

@@ -1,12 +1,11 @@
 """Adding teams (at the start and mid-tournament) and editing rosters, including
 adding players to a team once the tournament is under way."""
 import pytest
+from helpers import flashed, flashes, page_text
 from sqlalchemy.exc import IntegrityError
 
-from app import db
-from app.models import Player, RosterEntry, School, Team
+from app.models import Player, School, Team
 from app.standings import board_standings, team_standings
-from helpers import flashed, flashes, page_text
 
 
 def edit_form(team, school=None, core=None, remove=(), updates=None, new=()):

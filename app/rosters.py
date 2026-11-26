@@ -1,18 +1,11 @@
 from dataclasses import dataclass
-from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import joinedload, selectinload
-from typing import Optional
 
-from . import db
+from sqlalchemy.orm import joinedload, selectinload
+
 from .models import (
     BOARDS,
-    Game,
-    Match,
-    Player,
     RosterEntry,
-    School,
     Team,
-    position_between,
 )
 
 CORE_SIZE = BOARDS
@@ -43,9 +36,9 @@ class RosterLine:
     player_id: int
     name: str
     lichess_username: str
-    rating: Optional[int]
+    rating: int | None
     is_core: bool
-    core_team:Optional[str]
+    core_team:str | None
 
 @dataclass(frozen=True)
 class TeamRoster:
@@ -77,7 +70,7 @@ def roster_report(tournament_id):
                             core_team=core_of.get(e.player_id),
                         )
                 for e in s.team.roster)
-        
+
         report.append(
             TeamRoster(
                 number=s.number,

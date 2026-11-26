@@ -4,7 +4,14 @@ from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.models import (
-    BYE_POINTS, Bye, Game, Match, RosterEntry, Team, match_points_for, position_between,
+    BYE_POINTS,
+    Bye,
+    Game,
+    Match,
+    RosterEntry,
+    Team,
+    match_points_for,
+    position_between,
 )
 
 

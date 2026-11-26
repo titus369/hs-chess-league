@@ -300,7 +300,7 @@ def _context(pool, played, rounds_played):
     leaders = ({e.id for e in top_group}
                if len(top_group) == 2 and all(e.undefeated for e in top_group) else set())
     half = {}
-    for mp, members in homog.items():
+    for members in homog.values():
         k = len(members) // 2
         for n, e in enumerate(members):
             half[e.id] = "top" if n < k else "bottom"

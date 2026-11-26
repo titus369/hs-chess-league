@@ -22,7 +22,7 @@
 <h2>Preset byes for round {{ number }}</h2>
 <ul>
   {% for bye in requested_byes %}
-  <li>{{ bye.team.name }}: {{ bye.bye_type }}-point bye{% if bye.source == 'late_join' %} (late join){% endif %}</li>
+  <li>{{ team_label.get(bye.team_id, bye.team.name) }}: {{ bye.bye_type }}-point bye{% if bye.source == 'late_join' %} (late join){% endif %}</li>
   {% endfor %}
 </ul>
 {% endif %}
@@ -45,7 +45,7 @@
         <select name="home_{{ m.table_number }}">
           <option value="">--</option>
           {% for s in seeds %}
-          <option value="{{ s.team.id }}" {% if m.home_team_id == s.team.id %}selected{% endif %}>#{{ s.number }} {{ s.team.name }} (MP: {{ '%g'|format(team_match_points[s.team.id]) }})</option>
+          <option value="{{ s.team.id }}" {% if m.home_team_id == s.team.id %}selected{% endif %}>{{ team_label[s.team.id] }}</option>
           {% endfor %}
         </select>
       </td>
@@ -53,7 +53,7 @@
         <select name="away_{{ m.table_number }}">
           <option value="">--</option>
           {% for s in seeds %}
-          <option value="{{ s.team.id }}" {% if m.away_team_id == s.team.id %}selected{% endif %}>#{{ s.number }} {{ s.team.name }} (MP: {{ '%g'|format(team_match_points[s.team.id]) }})</option>
+          <option value="{{ s.team.id }}" {% if m.away_team_id == s.team.id %}selected{% endif %}>{{ team_label[s.team.id] }}</option>
           {% endfor %}
         </select>
       </td>
@@ -72,7 +72,7 @@
         <select name="bye_team_{{ i }}">
           <option value="">--</option>
           {% for s in seeds %}
-          <option value="{{ s.team.id }}" {% if b.team_id == s.team.id %}selected{% endif %}>#{{ s.number }} {{ s.team.name }} (MP: {{ '%g'|format(team_match_points[s.team.id]) }})</option>
+          <option value="{{ s.team.id }}" {% if b.team_id == s.team.id %}selected{% endif %}>{{ team_label[s.team.id] }}</option>
           {% endfor %}
         </select>
       </td>
@@ -107,7 +107,7 @@
     <select name="{{ side }}_team" required>
       <option value="">--</option>
       {% for s in unplaced_seeds %}
-      <option value="{{ s.team.id }}">#{{ s.number }} {{ s.team.name }} (MP: {{ '%g'|format(team_match_points[s.team.id]) }}){% if s.team.id in bye_by_team %} &mdash; {{ bye_by_team[s.team.id] }}-point bye{% endif %}</option>
+      <option value="{{ s.team.id }}">{{ team_label[s.team.id] }}{% if s.team.id in bye_by_team %} &mdash; {{ bye_by_team[s.team.id] }}-point bye{% endif %}</option>
       {% endfor %}
     </select>
   </label>
@@ -137,7 +137,7 @@
       </td>
 {% endmacro %}
 {% for m in matches %}
-<h3>Table {{ m.table_number }}{% if m.home_team and m.away_team %}: {{ m.home_team.name }} vs {{ m.away_team.name }}{% endif %}</h3>
+<h3>Table {{ m.table_number }}{% if m.home_team and m.away_team %}: {{ team_label.get(m.home_team_id, m.home_team.name) }} vs {{ team_label.get(m.away_team_id, m.away_team.name) }}{% endif %}</h3>
 {% if m.home_team and m.away_team %}
 <form method="post" class="lineup-form">
   <input type="hidden" name="action" value="lineup">

@@ -3,15 +3,20 @@ tables, clearing, and the rule that earlier rounds lock once a later round is pa
 import itertools
 
 import pytest
+from helpers import flashed, flashes, page_text
 from sqlalchemy.exc import IntegrityError
 
-from app import db
-from app.models import Bye, Match, Round
+from app.models import Bye, Match
 from app.pairings import (
-    PairingError, add_match, create_round, previous_round_problem, resize_round,
-    round_has_pairings, round_lock_problem, set_round_pairings,
+    PairingError,
+    add_match,
+    create_round,
+    previous_round_problem,
+    resize_round,
+    round_has_pairings,
+    round_lock_problem,
+    set_round_pairings,
 )
-from helpers import flashed, flashes, page_text
 
 
 def save_form(pairs, byes=()):
@@ -292,7 +297,8 @@ class TestGeneratePairings:
 
     def test_regenerate_redecides_the_automatic_bye(self, league):
         t = league.tournament()
-        teams = [league.team(t, s) for s in ("Alpha", "Bravo", "Charlie")]
+        for s in ("Alpha", "Bravo", "Charlie"):
+            league.team(t, s)
         league.generate(t, 1)
         league.generate(t, 1)
         assert Bye.query.count() == 1 and len(league.round(t, 1).matches) == 1
@@ -322,7 +328,8 @@ class TestGeneratePairings:
 
     def test_generate_notes_unavoidable_problems(self, league):
         t = league.tournament()
-        la, lb = league.team(t, "Lincoln"), league.team(t, "Lincoln")
+        league.team(t, "Lincoln")
+        league.team(t, "Lincoln")
         response = league.generate(t, 1)
         assert flashed(response, "Note: Table 1: Lincoln A and Lincoln B are from the same school.")
         assert flashed(response, "Warning: Lincoln A vs Lincoln B: same school.")
@@ -460,3 +467,15 @@ class TestRoundLock:
         league.finish_round(t, 1)
         league.round_action(t, 2, "create", num_tables="2")
         assert round_lock_problem(t, 1) is None
+
+
+class TestTeamLabel:
+    @pytest.mark.parametrize("rating, mp, expected", [
+        (1634.25, 1.0, "(#1) Minnetonka 1 (1634.25, 1.0)"),
+        (1634.5, 0.5, "(#1) Minnetonka 1 (1634.50, 0.5)"),
+        (100, 0, "(#1) Minnetonka 1 (100.00, 0.0)"),
+        (1500, 2.5, "(#1) Minnetonka 1 (1500.00, 2.5)"),
+    ])
+    def test_format(self, rating, mp, expected):
+        from app.pairings import team_label
+        assert team_label(1, "Minnetonka 1", rating, mp) == expected

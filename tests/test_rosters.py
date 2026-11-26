@@ -31,7 +31,7 @@ def test_substitutes_do_not_affect_seeding(league):
 
 def test_core_count_and_completeness(league):
     t = league.tournament()
-    team = league.team(t, "Alpha")
+    league.team(t, "Alpha")
     seed = seeded_teams(t.id)[0]
     assert seed.core_count == CORE_SIZE and seed.is_complete
 
@@ -52,7 +52,7 @@ def test_pairing_numbers(league):
 
 def test_roster_report_lists_core_and_substitutes(league):
     t = league.tournament()
-    a = league.team(t, "Lincoln")
+    league.team(t, "Lincoln")
     b = league.team(t, "Lincoln", ratings=(1200, 1100, 1000, None))
     league.player(b, "Lincoln Sub", rating=900)
     report = {r.team_name: r for r in roster_report(t.id)}

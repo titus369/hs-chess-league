@@ -1,6 +1,9 @@
 from collections import defaultdict
+
 from sqlalchemy.orm import joinedload, selectinload
+
 from .models import BOARDS, Game, Match, Round, match_points_for
+
 
 def team_standings(tournament, before_round=None):
     rounds_query = (
@@ -32,7 +35,7 @@ def build_team_standings(teams, rounds, include_uncompleted_byes=False):
                 row["gp"] += gp
                 row["mp"] += match_points_for(gp)
                 row["played"] += 1
-    
+
     reached = max((rd.number for rd in rounds if any(m.is_complete for m in rd.matches)), default=0)
     for rd in rounds:
         if not include_uncompleted_byes and rd.number > reached:
@@ -76,11 +79,11 @@ def build_board_standings(games):
             row["points"] += score
             row["games"] += 1
             row["board"] = max(row["board"], g.board)
-    
+
     by_board = defaultdict(list)
     for row in stats.values():
         by_board[row["board"]].append(row)
-    
+
     return {
         b: sorted(by_board.get(b, []), key=lambda row: (-row["points"], row["player"].name))
         for b in range(1, BOARDS + 1)

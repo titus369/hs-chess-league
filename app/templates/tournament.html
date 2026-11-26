@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>{{ t.name }}</h1>
-<p><a href="{{ url_for('main.boards', tournament_id=t.id) }}">Individual board standings</a></p>
+<p><a href="{{ url_for('main.boards', tournament_id=t.id) }}">Individual board standings</a> &middot; <a href="{{ url_for('main.grand_prix', tournament_id=t.id) }}">Individual grand prix</a></p>
 
 <h2>Team standings</h2>
 <p>Wallchart: teams in standings order, with each round's opponent (by line number), side (H = home, A = away) and result (W/D/L, game points for&ndash;against).</p>

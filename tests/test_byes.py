@@ -1,9 +1,9 @@
 """Bye requests (team roster page), late-join byes, and the half-point bye cap."""
 import pytest
+from helpers import flashed, flashes, page_text
 
 from app.models import MAX_HALF_BYES, Bye
 from app.pairings import first_unpaired_round, late_join_bye_plan
-from helpers import flashed, flashes, page_text
 
 
 def request_bye(league, team, number, bye_type):
@@ -206,7 +206,7 @@ class TestRoundPageByes:
         a = league.team(t, "Alpha")
         league.add_bye(t, 1, a, "half")
         page = page_text(league.get(f"/tournaments/{t.id}/rounds/1"))
-        assert "Alpha A: half-point bye" in page
+        assert "Alpha A (" in page and "0.0): half-point bye" in page   # (#seed) Alpha A (rating, 0.0)
 
     def test_generated_pairings_keep_requested_byes(self, league):
         t = league.tournament()

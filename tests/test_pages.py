@@ -1,8 +1,8 @@
 """Every page renders, links between pages work, and bad URLs give 404s."""
 import pytest
+from helpers import flashed, page_text
 
 from app.models import Tournament
-from helpers import flashed, page_text
 
 
 @pytest.fixture
@@ -24,7 +24,8 @@ def season(league):
 
 
 def all_urls(t):
-    urls = ["/", "/tournaments/new", f"/tournaments/{t.id}", f"/tournaments/{t.id}/boards"]
+    urls = ["/", "/tournaments/new", f"/tournaments/{t.id}", f"/tournaments/{t.id}/boards",
+            f"/tournaments/{t.id}/grand-prix"]
     urls += [f"/tournaments/{t.id}/rounds/{n}" for n in range(1, t.num_rounds + 1)]
     for team in t.teams:
         urls += [f"/tournaments/{t.id}/teams/{team.id}/{page}" for page in ("roster", "history", "edit")]
@@ -109,7 +110,18 @@ class TestWallchartPage:
     def test_round_page_has_no_standings_table(self, league, season):
         page = page_text(league.get(f"/tournaments/{season.id}/rounds/2"))
         assert "Teams for manual pairings" not in page
-        assert "(MP: " in page               # the team pickers still show match points
+        assert "(MP: " not in page            # pickers use the (#seed) Name (rating, MP) label
+
+    def test_round_page_labels_teams_with_seed_rating_and_match_points(self, league, season):
+        from app.rosters import seeded_teams
+        from app.standings import team_standings
+        mp = {row["team"].id: row["mp"] for row in team_standings(season, before_round=2)}
+        page = page_text(league.get(f"/tournaments/{season.id}/rounds/2"))
+        for s in seeded_teams(season.id):
+            label = f"(#{s.number}) {s.team.name} ({s.avg_rating:.2f}, {mp.get(s.team.id, 0.0):.1f})"
+            assert label in page, label
+        first = league.round(season, 2).paired_matches[0]
+        assert "Table 1: (#" in page and f"{first.home_team.name} (" in page
 
 
 class TestTeamPages:

@@ -20,14 +20,15 @@ When you add or change a feature, add tests for it in the matching file:
     test_pairings.py   creating, generating, switching, clearing and locking rounds
     test_lineups.py    lineups, results, forfeits and pasted substitutes
     test_pages.py      every page renders; navigation and 404s
+    test_grand_prix.py Lichess arena scoring, imports and grand prix standings
 """
 import pytest
+from helpers import flashed, flashes
 
 from app import create_app, db
 from app.models import BOARDS, Bye, Player, RosterEntry, Round, School, Team, Tournament
 from app.pairings import create_round, set_round_pairings
 from app.routes import RESULTS
-from helpers import flashed, flashes
 
 
 @pytest.fixture

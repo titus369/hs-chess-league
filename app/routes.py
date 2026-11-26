@@ -1,10 +1,11 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for, abort
+from datetime import date
+
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, or_
 
 from . import db
+from .grand_prix import KINDS, GrandPrixError, add_arena, grand_prix_standings, remove_arena
 from .models import BOARDS, MAX_HALF_BYES, Bye, Game, Match, Player, RosterEntry, Round, School, Team, Tournament
-from .rosters import roster_report, seeded_teams
-from .standings import board_standings, team_standings, wallchart
 from .pairings import (
     PRESET_BYE_SOURCES,
     PairingError,
@@ -23,7 +24,11 @@ from .pairings import (
     round_lock_problem,
     round_pairings,
     set_round_pairings,
+    team_labels,
 )
+from .rosters import roster_report, seeded_teams
+from .standings import board_standings, team_standings, wallchart
+
 bp = Blueprint("main", __name__)
 
 
@@ -661,7 +666,38 @@ def edit_team(tournament_id, team_id):
 def boards(tournament_id):
     t = db.get_or_404(Tournament, tournament_id)
     return render_template("boards.html", t=t, by_board=board_standings(t))
-    
+
+@bp.route("/tournaments/<int:tournament_id>/grand-prix", methods=["GET", "POST"])
+def grand_prix(tournament_id):
+    t = db.get_or_404(Tournament, tournament_id)
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "add":
+                raw_date = request.form.get("event_date", "").strip()
+                try:
+                    event_date = date.fromisoformat(raw_date) if raw_date else None
+                except ValueError:
+                    raise GrandPrixError(f"'{raw_date}' isn't a date.") from None
+                event, created = add_arena(t, request.form.get("arena_id"), request.form.get("kind"), event_date)
+                db.session.commit()
+                players = len(event.results)
+                verb = "added" if created else "re-imported; its earlier results were replaced"
+                flash(f"Arena {event.arena_id} ({event.label}) {verb}. {players} players took part.")
+            elif action == "remove":
+                event = remove_arena(t, request.form.get("event_id", type=int))
+                db.session.commit()
+                flash(f"Arena {event.arena_id} ({event.label}) removed from the grand prix.")
+            else:
+                raise GrandPrixError("Unknown grand prix action.")
+        except GrandPrixError as err:
+            db.session.rollback()
+            flash(str(err))
+        return redirect(url_for("main.grand_prix", tournament_id=t.id))
+
+    events, rows = grand_prix_standings(t)
+    return render_template("grand_prix.html", t=t, events=events, rows=rows, kinds=KINDS, today=date.today())
+
 #Round Routes
 def to_team_id(value):
     value = (value or "").strip()
@@ -701,7 +737,7 @@ def add_pasted_substitute(team, game, side):
     try:
         rating = to_int_or_none(raw_rating)
     except ValueError:
-        raise PairingError(f"{where}: rating '{raw_rating}' isn't a number.")
+        raise PairingError(f"{where}: rating '{raw_rating}' isn't a number.") from None
 
     player = Player.query.filter(
         Player.tournament_id == team.tournament_id,
@@ -821,7 +857,7 @@ def round_page(tournament_id, number):
     t = db.get_or_404(Tournament, tournament_id)
     if not 1 <= number <= t.num_rounds:
         abort(404)
- 
+
     if request.method == "POST":
         try:
             action = request.form.get("action")
@@ -900,7 +936,7 @@ def round_page(tournament_id, number):
             for w in warnings:
                 flash("Warning: " + w)
         return redirect(url_for("main.round_page", tournament_id=t.id, number=number))
- 
+
     matches = round_pairings(t, number)
     seeds = seeded_teams(t.id)
     team_match_points = {
@@ -925,6 +961,7 @@ def round_page(tournament_id, number):
         number=number,
         seeds=seeds,
         team_match_points=team_match_points,
+        team_label=team_labels(seeds, team_match_points),
         roster_players={
             seed.team.id: seed.team.roster
             for seed in seeds

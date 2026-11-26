@@ -1,5 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import CheckConstraint, Index, UniqueConstraint, text
+
 from . import db
 
 BOARDS = 4
@@ -9,13 +11,13 @@ DRAW_THRESHOLD = 2.0
 MAX_HALF_BYES = 3 # requested / late-join half point byes
 
 BYE_POINTS = {
-    "full": (1.0, 2.5), 
+    "full": (1.0, 2.5),
     "half": (0.5, 2.0),
     "zero": (0.0, 0.0),
 }
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 def match_points_for(game_points):
     if game_points is None:
@@ -43,6 +45,10 @@ class Tournament(db.Model):
     players = db.relationship("Player", back_populates="tournament", cascade="all, delete-orphan")
     teams = db.relationship("Team", back_populates="tournament", cascade="all, delete-orphan", order_by="Team.id")
     rounds = db.relationship("Round", back_populates="tournament", cascade="all, delete-orphan", order_by="Round.number")
+    grand_prix_events = db.relationship(
+        "GrandPrixEvent", back_populates="tournament", cascade="all, delete-orphan",
+        order_by="(GrandPrixEvent.event_date, GrandPrixEvent.id)",
+    )
 
 
 class Player(db.Model):
@@ -61,7 +67,7 @@ class Player(db.Model):
     school = db.relationship("School", back_populates="players")
     tournament = db.relationship("Tournament", back_populates="players")
     roster_entries = db.relationship("RosterEntry", back_populates="player", cascade="all, delete-orphan")
-    
+
     @property
     def core_team(self):
         return next((e.team for e in self.roster_entries if e.is_core),None)
@@ -123,7 +129,7 @@ class Team(db.Model):
     tournament = db.relationship("Tournament", back_populates="teams")
     school = db.relationship("School", back_populates="teams")
     roster = db.relationship("RosterEntry", back_populates="team", cascade="all, delete-orphan", order_by="RosterEntry.position")
-    
+
     @property
     def core_players(self):
         return [e.player for e in self.roster if e.is_core]
@@ -278,15 +284,63 @@ class Game(db.Model):
     @property
     def home_is_white(self):
         return self.board % 2 == 1
-    
+
     @property
     def white_player(self):
         return self.home_player if self.home_is_white else self.away_player
-    
+
     @property
     def black_player(self):
         return self.away_player if self.home_is_white else self.home_player
-    
+
     @property
     def code(self):
         return f"{self.match.round.number}.{self.match.table_number}.{self.board}"
+
+
+class GrandPrixEvent(db.Model):
+    """One Lichess arena counted in a tournament's individual grand prix."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    tournament_id = db.Column(db.Integer, db.ForeignKey("tournament.id"), nullable=False)
+    arena_id = db.Column(db.String(20), nullable=False)
+    kind = db.Column(db.String(8), nullable=False)
+    event_date = db.Column(db.Date, nullable=False)
+    imported_at = db.Column(db.DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "arena_id"),
+        CheckConstraint("kind IN ('weekly', 'kickoff')"),
+    )
+
+    tournament = db.relationship("Tournament", back_populates="grand_prix_events")
+    results = db.relationship("GrandPrixResult", back_populates="event", cascade="all, delete-orphan")
+
+    @property
+    def label(self):
+        """Column heading in the standings, e.g. "11/6"."""
+        return f"{self.event_date.month}/{self.event_date.day}"
+
+
+class GrandPrixResult(db.Model):
+    """One Lichess username's result in one arena. Everyone who played at least
+    one game is stored, even with 0 grand prix points. `arena_score` is the
+    Lichess arena score, used as the standings tiebreak. Usernames are kept in
+    lower case and matched to players when the standings are built, so arena
+    players who aren't on a roster still count."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    event_id = db.Column(db.Integer, db.ForeignKey("grand_prix_event.id"), nullable=False)
+    lichess_username = db.Column(db.String(120), nullable=False)
+    rank = db.Column(db.Integer, nullable=True)
+    rank_points = db.Column(db.Integer, nullable=False, default=0)
+    team_bonus = db.Column(db.Integer, nullable=False, default=0)
+    arena_score = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (UniqueConstraint("event_id", "lichess_username"),)
+
+    event = db.relationship("GrandPrixEvent", back_populates="results")
+
+    @property
+    def points(self):
+        return self.rank_points + self.team_bonus

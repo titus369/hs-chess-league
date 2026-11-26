@@ -1,0 +1,12 @@
+# Lint settings for ruff (https://docs.astral.sh/ruff/). Run: python -m ruff check .
+line-length = 120
+target-version = "py312"
+extend-exclude = ["instance"]
+
+[lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear, UP modern syntax.
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # long lines: user-facing messages are kept on one line
+    "B905",  # zip() without strict=: the zipped lists are built together
+]

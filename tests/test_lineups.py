@@ -1,12 +1,12 @@
 """Entering lineups and results on the round page: validation, forfeits,
 eligibility, and substitutes added by pasting from Google Sheets."""
 import pytest
+from helpers import flashed, flashes
 from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.models import Player, RosterEntry
 from app.pairings import set_round_pairings
-from helpers import flashed, flashes
 
 
 @pytest.fixture

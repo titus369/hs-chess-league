@@ -33,3 +33,8 @@ dist/
 Thumbs.db
 
 *.xlsx
+
+# Claude Code files (kept local, never pushed)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
